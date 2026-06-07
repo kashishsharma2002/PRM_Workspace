@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Server.Data;
+using Server.Seed;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+if (args.Contains("--seed"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<PrmDbContext>();
+    await DatabaseSeeder.SeedAsync(db);
+    return;
+}
 
 if (app.Environment.IsDevelopment())
 {
