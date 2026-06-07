@@ -1,0 +1,60 @@
+# =============================================================================
+# PRM Platform — files that must NOT be committed
+# =============================================================================
+
+# --- .NET build output ---
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+artifacts/
+*.dll
+*.exe
+*.pdb
+project.lock.json
+project.fragment.lock.json
+
+# --- IDE and editor ---
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+*.DotSettings.user
+
+# --- Test and coverage output ---
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# --- Secrets and local config overrides ---
+# Use dotnet user-secrets or env vars for JWT/LLM keys (see Developer Guide §14)
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.env
+.env.*
+
+# --- Logs and runtime data ---
+logs/
+**/logs/
+*.log
+
+# --- Planning / spec / diagrams (reference only — keep locally) ---
+docs/specs/
+docs/diagrams/
+*.plan.md
+**/*plan*.md
+.cursor/
+
+# --- OS and misc ---
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+*.tmp
+*.swp
+_MConverter.eu_*
