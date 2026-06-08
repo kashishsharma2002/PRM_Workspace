@@ -1,4 +1,4 @@
-﻿using Client.Helpers;
+﻿using Client;
 using Microsoft.Extensions.Configuration;
 
 var config = new ConfigurationBuilder()
@@ -8,7 +8,8 @@ var config = new ConfigurationBuilder()
 
 var serverBaseUrl = config["ServerBaseUrl"] ?? "https://localhost:5001";
 
-ConsoleHelper.PrintHeader("PRM Client — Phase 0");
-Console.WriteLine($"Server: {serverBaseUrl}");
+await AppStarter.RunAsync(serverBaseUrl);
+
+Console.WriteLine();
 Console.WriteLine("Press any key to exit...");
 Console.ReadKey();

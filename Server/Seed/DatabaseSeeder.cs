@@ -7,6 +7,8 @@ namespace Server.Seed;
 public static class DatabaseSeeder
 {
     private const string AdminUsername = "admin";
+    private const string AdminEmail = "admin@techserve.com";
+    private const string AdminPassword = "Admin@1234";
 
     public static async Task SeedAsync(PrmDbContext context, CancellationToken cancellationToken = default)
     {
@@ -21,9 +23,9 @@ public static class DatabaseSeeder
             context.Users.Add(new User
             {
                 Username = AdminUsername,
-                Email = "admin@lctechserve.com",
+                Email = AdminEmail,
                 FullName = "System Administrator",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin1234@"),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(AdminPassword),
                 Role = "ADMIN",
                 ForcePasswordChange = true,
                 IsActive = true,
