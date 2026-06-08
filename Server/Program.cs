@@ -99,7 +99,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
     service = "PRM.Server",
-    phase = "1"
+    phase = "2"
 }));
 
 app.Run();

@@ -37,27 +37,27 @@ public static class AppStarter
                 }
             }
 
-            RouteToMenu();
-            break;
+            var loggedOut = await RouteToMenuAsync(client);
+            if (loggedOut)
+                continue;
         }
     }
 
-    private static void RouteToMenu()
+    private static async Task<bool> RouteToMenuAsync(RestClient client)
     {
         switch (SessionStore.Role)
         {
             case "ADMIN":
-                AdminMenuScreen.Run();
-                break;
+                return !await AdminMenuScreen.RunAsync(client);
             case "MANAGER":
                 ManagerMenuScreen.Run();
-                break;
+                return true;
             case "EMPLOYEE":
                 EmployeeMenuScreen.Run();
-                break;
+                return true;
             default:
                 ConsoleHelper.PrintError($"Unknown role: {SessionStore.Role}");
-                break;
+                return true;
         }
     }
 }
