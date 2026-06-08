@@ -32,3 +32,15 @@ public sealed class ForbiddenAppException : AppException
     public ForbiddenAppException(string message)
         : base(message, StatusCodes.Status403Forbidden) { }
 }
+
+public sealed class NotFoundAppException : AppException
+{
+    public NotFoundAppException(string message)
+        : base(message, StatusCodes.Status404NotFound) { }
+}
+
+public sealed class ConflictAppException : AppException
+{
+    public ConflictAppException(string message)
+        : base(message, StatusCodes.Status409Conflict) { }
+}

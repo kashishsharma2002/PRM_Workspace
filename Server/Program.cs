@@ -1,6 +1,9 @@
 using System.Text;
 using System.Text.Json;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.Common;
@@ -11,6 +14,7 @@ using Server.Repositories.Interfaces;
 using Server.Seed;
 using Server.Services;
 using Server.Services.Interfaces;
+using Server.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,7 +23,10 @@ builder.Services.AddDbContext<PrmDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
@@ -44,7 +51,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
+builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+
+            return new BadRequestObjectResult(ApiResponse<object>.Fail("Validation failed.", errors));
+        };
+    })
     .AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
 builder.Services.AddEndpointsApiExplorer();

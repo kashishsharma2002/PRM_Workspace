@@ -27,6 +27,7 @@ public class AuthService(IUserRepository userRepository, IJwtTokenService jwtTok
         user.LastLoginAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
         await userRepository.UpdateAsync(user, cancellationToken);
+        await userRepository.SaveChangesAsync(cancellationToken);
 
         return jwtTokenService.CreateToken(user, employee);
     }
@@ -52,5 +53,6 @@ public class AuthService(IUserRepository userRepository, IJwtTokenService jwtTok
         user.ForcePasswordChange = false;
         user.UpdatedAt = DateTime.UtcNow;
         await userRepository.UpdateAsync(user, cancellationToken);
+        await userRepository.SaveChangesAsync(cancellationToken);
     }
 }
