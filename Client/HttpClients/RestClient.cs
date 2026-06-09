@@ -23,12 +23,30 @@ public class RestClient
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }
 
+    public async Task<T?> GetAsync<T>(string endpoint, bool requireAuth = false)
+    {
+        if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
+            throw new SessionExpiredException("Session expired. Please log in again.");
+
+        var response = await _http.GetAsync($"{_baseUrl}{endpoint}");
+        return await HandleResponse<T>(response);
+    }
+
     public async Task<T?> PostAsync<T>(string endpoint, object payload, bool requireAuth = false)
     {
         if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
             throw new SessionExpiredException("Session expired. Please log in again.");
 
         var response = await _http.PostAsJsonAsync($"{_baseUrl}{endpoint}", payload);
+        return await HandleResponse<T>(response);
+    }
+
+    public async Task<T?> PutAsync<T>(string endpoint, object payload, bool requireAuth = false)
+    {
+        if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
+            throw new SessionExpiredException("Session expired. Please log in again.");
+
+        var response = await _http.PutAsJsonAsync($"{_baseUrl}{endpoint}", payload);
         return await HandleResponse<T>(response);
     }
 
