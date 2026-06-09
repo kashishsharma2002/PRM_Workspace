@@ -12,9 +12,39 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             .Where(a => a.EmployeeId == employeeId && a.AllocationStatus == "ACTIVE")
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(
+        long? employeeId,
+        long? projectId,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        var query = context.ProjectAllocations.AsQueryable();
+
+        if (employeeId.HasValue)
+            query = query.Where(a => a.EmployeeId == employeeId.Value);
+
+        if (projectId.HasValue)
+            query = query.Where(a => a.ProjectId == projectId.Value);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(a => a.AllocationStatus == status.Trim().ToUpperInvariant());
+        else
+            query = query.Where(a => a.AllocationStatus == "ACTIVE");
+
+        return await query.OrderBy(a => a.Id).ToListAsync(cancellationToken);
+    }
+
     public Task UpdateAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default)
     {
         context.ProjectAllocations.Update(allocation);
         return Task.CompletedTask;
     }
+
+    public async Task AddAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default)
+    {
+        await context.ProjectAllocations.AddAsync(allocation, cancellationToken);
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        context.SaveChangesAsync(cancellationToken);
 }

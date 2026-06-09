@@ -14,6 +14,7 @@ public static class DatabaseSeeder
     {
         await SeedAdminAsync(context, cancellationToken);
         await SeedSampleUsersAsync(context, cancellationToken);
+        await SeedSampleProjectsAsync(context, cancellationToken);
     }
 
     private static async Task SeedAdminAsync(PrmDbContext context, CancellationToken cancellationToken)
@@ -138,6 +139,100 @@ public static class DatabaseSeeder
             new EmployeeSkill { EmployeeId = ravi.e.Id, SkillId = spring.Id, ProficiencyLevel = "ADVANCED", CreatedAt = now });
 
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedSampleProjectsAsync(PrmDbContext context, CancellationToken cancellationToken)
+    {
+        if (await context.Projects.AnyAsync(p => p.ProjectName == "Alpha Portal", cancellationToken))
+            return;
+
+        var ankit = await context.Users.FirstOrDefaultAsync(u => u.Username == "ankit.shah", cancellationToken);
+        var neha = await context.Users.FirstOrDefaultAsync(u => u.Username == "neha.joshi", cancellationToken);
+        if (ankit is null || neha is null)
+            return;
+
+        var now = DateTime.UtcNow;
+        var projects = new[]
+        {
+            ("Alpha Portal", "Customer web portal", new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 30), "ACTIVE", 120, ankit.Id),
+            ("Beta CRM", "CRM modernization", new DateOnly(2026, 2, 1), new DateOnly(2026, 8, 15), "ACTIVE", 80, ankit.Id),
+            ("Gamma Rewrite", "Legacy rewrite", new DateOnly(2026, 2, 1), new DateOnly(2026, 7, 1), "ACTIVE", 60, neha.Id),
+            ("Delta Migrate", "Data migration", new DateOnly(2026, 4, 1), new DateOnly(2026, 9, 30), "PLANNED", 100, neha.Id)
+        };
+
+        var projectIds = new List<long>();
+        foreach (var (name, desc, start, end, status, sp, managerId) in projects)
+        {
+            var project = new Project
+            {
+                ProjectCode = "TEMP",
+                ProjectName = name,
+                Description = desc,
+                StartDate = start,
+                EndDate = end,
+                ProjectStatus = status,
+                HealthStatus = "GREEN",
+                TotalStoryPoints = sp,
+                ManagerUserId = managerId,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            context.Projects.Add(project);
+            await context.SaveChangesAsync(cancellationToken);
+            project.ProjectCode = $"PRJ-{project.Id:D6}";
+            projectIds.Add(project.Id);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        if (projectIds.Count >= 3)
+        {
+            context.ProjectMilestones.AddRange(
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Design Complete", DueDate = new DateOnly(2026, 4, 1), StoryPoints = 20, MilestoneStatus = "DONE", SortOrder = 1, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Backend API", DueDate = new DateOnly(2026, 4, 15), StoryPoints = 40, MilestoneStatus = "IN_PROGRESS", SortOrder = 2, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Testing", DueDate = new DateOnly(2026, 4, 30), StoryPoints = 35, MilestoneStatus = "NOT_STARTED", SortOrder = 3, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Go Live", DueDate = new DateOnly(2026, 5, 15), StoryPoints = 25, MilestoneStatus = "NOT_STARTED", SortOrder = 4, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[1], MilestoneTitle = "Requirements", DueDate = new DateOnly(2026, 3, 15), StoryPoints = 15, MilestoneStatus = "DONE", SortOrder = 1, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[2], MilestoneTitle = "Architecture", DueDate = new DateOnly(2026, 3, 1), StoryPoints = 10, MilestoneStatus = "IN_PROGRESS", SortOrder = 1, CreatedAt = now, UpdatedAt = now });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var ravi = await context.Employees
+            .Join(context.Users, e => e.UserId, u => u.Id, (e, u) => new { e, u })
+            .FirstOrDefaultAsync(x => x.u.Username == "ravi.kumar", cancellationToken);
+
+        if (ravi is not null && projectIds.Count >= 2)
+        {
+            context.ProjectAllocations.AddRange(
+                new ProjectAllocation
+                {
+                    EmployeeId = ravi.e.Id,
+                    ProjectId = projectIds[0],
+                    AllocationPercentage = 50,
+                    AllocationStartDate = new DateOnly(2026, 3, 1),
+                    AllocationEndDate = new DateOnly(2026, 6, 30),
+                    AllocationStatus = "ACTIVE",
+                    AllocatedByManagerId = ankit.Id,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                },
+                new ProjectAllocation
+                {
+                    EmployeeId = ravi.e.Id,
+                    ProjectId = projectIds[1],
+                    AllocationPercentage = 50,
+                    AllocationStartDate = new DateOnly(2026, 4, 1),
+                    AllocationEndDate = new DateOnly(2026, 7, 31),
+                    AllocationStatus = "ACTIVE",
+                    AllocatedByManagerId = ankit.Id,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private static User CreateUser(string username, string email, string fullName, string role, DateTime now) =>
