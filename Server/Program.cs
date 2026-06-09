@@ -36,7 +36,11 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IAllocationService, AllocationService>();
+builder.Services.AddScoped<ITimesheetService, TimesheetService>();
+builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
+builder.Services.AddScoped<IActivityTagRepository, ActivityTagRepository>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddDataProtection();
 builder.Services.AddSingleton<ConfigEncryptionHelper>();
@@ -111,7 +115,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
     service = "PRM.Server",
-    phase = "4"
+    phase = "5"
 }));
 
 app.Run();
