@@ -84,3 +84,28 @@ public class EmployeeAllocationListResponse
     public List<EmployeeAllocationItem> Allocations { get; set; } = [];
     public decimal TotalUtilizationPercentage { get; set; }
 }
+
+public class TeamTimesheetRow
+{
+    public long? TimesheetId { get; set; }
+    public string EmployeeName { get; set; } = string.Empty;
+    public string ProjectName { get; set; } = string.Empty;
+    public decimal HoursLogged { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
+public class TeamTimesheetListResponse
+{
+    public DateOnly WeekStartDate { get; set; }
+    public List<TeamTimesheetRow> Rows { get; set; } = [];
+}
+
+public class ManagerTimesheetDetail
+{
+    public long Id { get; set; }
+    public string EmployeeName { get; set; } = string.Empty;
+    public DateOnly WeekStartDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal TotalHours { get; set; }
+    public List<TimesheetDetailLineItem> LineItems { get; set; } = [];
+}

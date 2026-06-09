@@ -35,6 +35,8 @@ public class TimesheetServiceTests : IDisposable
             new TimesheetRepository(_context),
             new AllocationRepository(_context),
             new ProjectRepository(_context),
+            new EmployeeRepository(_context),
+            new UserRepository(_context),
             new ActivityTagRepository(_context),
             new SystemConfigRepository(_context),
             new AuditLogRepository(_context),

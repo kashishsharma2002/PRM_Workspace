@@ -13,6 +13,14 @@ public class ProjectRepository(PrmDbContext context) : IProjectRepository
     public async Task<IReadOnlyList<Project>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await context.Projects.OrderBy(p => p.Id).ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Project>> GetByManagerUserIdAsync(
+        long managerUserId,
+        CancellationToken cancellationToken = default) =>
+        await context.Projects
+            .Where(p => p.ManagerUserId == managerUserId && p.IsActive)
+            .OrderBy(p => p.Id)
+            .ToListAsync(cancellationToken);
+
     public Task<bool> ExistsByCodeAsync(string projectCode, CancellationToken cancellationToken = default) =>
         context.Projects.AnyAsync(p => p.ProjectCode == projectCode, cancellationToken);
 
