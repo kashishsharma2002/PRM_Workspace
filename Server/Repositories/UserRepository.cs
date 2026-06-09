@@ -16,6 +16,16 @@ public class UserRepository(PrmDbContext context) : IUserRepository
     public Task<User?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
         context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<long, User>> GetByIdsAsync(IEnumerable<long> ids, CancellationToken cancellationToken = default)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0)
+            return new Dictionary<long, User>();
+
+        var users = await context.Users.Where(u => idList.Contains(u.Id)).ToListAsync(cancellationToken);
+        return users.ToDictionary(u => u.Id);
+    }
+
     public async Task<IReadOnlyList<User>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await context.Users.OrderBy(u => u.Id).ToListAsync(cancellationToken);
 

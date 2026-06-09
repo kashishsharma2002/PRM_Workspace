@@ -50,6 +50,15 @@ public class RestClient
         return await HandleResponse<T>(response);
     }
 
+    public async Task<T?> DeleteAsync<T>(string endpoint, bool requireAuth = false)
+    {
+        if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
+            throw new SessionExpiredException("Session expired. Please log in again.");
+
+        var response = await _http.DeleteAsync($"{_baseUrl}{endpoint}");
+        return await HandleResponse<T>(response);
+    }
+
     private static async Task<T?> HandleResponse<T>(HttpResponseMessage response)
     {
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
