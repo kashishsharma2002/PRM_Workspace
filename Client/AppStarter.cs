@@ -53,8 +53,7 @@ public static class AppStarter
                 ManagerMenuScreen.Run();
                 return true;
             case "EMPLOYEE":
-                EmployeeMenuScreen.Run();
-                return true;
+                return !await EmployeeMenuScreen.RunAsync(client);
             default:
                 ConsoleHelper.PrintError($"Unknown role: {SessionStore.Role}");
                 return true;

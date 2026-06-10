@@ -23,4 +23,38 @@ public static class DateInputHelper
 
     public static string FormatDisplay(DateOnly date) =>
         date.ToString("dd-MMM-yy", CultureInfo.InvariantCulture);
+
+    public static DateOnly GetLastMonday()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var daysSinceMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        return today.AddDays(-daysSinceMonday);
+    }
+
+    public static bool TryParseWeekStart(string? input, out DateOnly weekStart, out string? error)
+    {
+        weekStart = default;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            weekStart = GetLastMonday();
+            return true;
+        }
+
+        if (!TryParseToIso(input, out var isoDate))
+        {
+            error = "Invalid date format. Use DD-MM-YYYY.";
+            return false;
+        }
+
+        weekStart = DateOnly.Parse(isoDate, CultureInfo.InvariantCulture);
+        if (weekStart.DayOfWeek != DayOfWeek.Monday)
+        {
+            error = "Week start date must be a Monday.";
+            return false;
+        }
+
+        return true;
+    }
 }

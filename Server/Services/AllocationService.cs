@@ -49,4 +49,36 @@ public class AllocationService(
             TotalActiveCount = items.Count(i => i.AllocationStatus == "ACTIVE")
         };
     }
+
+    public async Task<EmployeeAllocationListResponseDto> GetMyAllocationsAsync(
+        long employeeId,
+        CancellationToken cancellationToken = default)
+    {
+        var allocations = await allocationRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
+        var items = new List<EmployeeAllocationItemDto>();
+
+        foreach (var allocation in allocations)
+        {
+            var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
+            items.Add(new EmployeeAllocationItemDto
+            {
+                ProjectId = allocation.ProjectId,
+                ProjectName = project?.ProjectName ?? "Unknown",
+                AllocationPercentage = allocation.AllocationPercentage,
+                AllocationStartDate = allocation.AllocationStartDate,
+                AllocationEndDate = allocation.AllocationEndDate,
+                AllocationStatus = allocation.AllocationStatus
+            });
+        }
+
+        var totalUtilization = items
+            .Where(i => i.AllocationStatus == "ACTIVE")
+            .Sum(i => i.AllocationPercentage);
+
+        return new EmployeeAllocationListResponseDto
+        {
+            Allocations = items,
+            TotalUtilizationPercentage = totalUtilization
+        };
+    }
 }

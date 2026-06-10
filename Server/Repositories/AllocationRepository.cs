@@ -12,6 +12,24 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             .Where(a => a.EmployeeId == employeeId && a.AllocationStatus == "ACTIVE")
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdForWeekAsync(
+        long employeeId,
+        DateOnly weekStart,
+        DateOnly weekEnd,
+        CancellationToken cancellationToken = default) =>
+        await context.ProjectAllocations
+            .Where(a => a.EmployeeId == employeeId
+                && a.AllocationStatus == "ACTIVE"
+                && a.AllocationStartDate <= weekEnd
+                && a.AllocationEndDate >= weekStart)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
+        await context.ProjectAllocations
+            .Where(a => a.EmployeeId == employeeId)
+            .OrderByDescending(a => a.AllocationStartDate)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(
         long? employeeId,
         long? projectId,
