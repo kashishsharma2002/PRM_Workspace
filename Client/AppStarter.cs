@@ -50,8 +50,7 @@ public static class AppStarter
             case "ADMIN":
                 return !await AdminMenuScreen.RunAsync(client);
             case "MANAGER":
-                ManagerMenuScreen.Run();
-                return true;
+                return !await ManagerMenuScreen.RunAsync(client);
             case "EMPLOYEE":
                 return !await EmployeeMenuScreen.RunAsync(client);
             default:

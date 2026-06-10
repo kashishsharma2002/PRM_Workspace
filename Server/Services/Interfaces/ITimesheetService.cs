@@ -29,4 +29,6 @@ public interface ITimesheetService
     Task<bool> HasMissedTimesheetReminderAsync(long employeeId, CancellationToken cancellationToken = default);
 
     Task MarkMissedTimesheetsAsync(CancellationToken cancellationToken = default);
+    Task<TeamTimesheetListResponseDto> GetTeamTimesheetsAsync(long managerUserId, DateOnly? weekStart, CancellationToken cancellationToken = default);
+    Task<ManagerTimesheetDetailDto> GetTimesheetForManagerAsync(long managerUserId, long timesheetId, CancellationToken cancellationToken = default);
 }

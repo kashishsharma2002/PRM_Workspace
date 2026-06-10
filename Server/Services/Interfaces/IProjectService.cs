@@ -11,4 +11,6 @@ public interface IProjectService
     Task<MilestoneListResponseDto> GetMilestonesAsync(long projectId, CancellationToken cancellationToken = default);
     Task AddMilestoneAsync(long projectId, CreateMilestoneRequestDto request, CancellationToken cancellationToken = default);
     Task UpdateMilestoneStatusAsync(long projectId, long milestoneId, UpdateMilestoneStatusRequestDto request, CancellationToken cancellationToken = default);
+    Task<ManagerProjectListResponseDto> GetMyProjectsAsync(long managerUserId, CancellationToken cancellationToken = default);
+    Task<ManagerProjectDetailDto> GetManagerProjectDetailAsync(long managerUserId, long projectId, CancellationToken cancellationToken = default);
 }

@@ -10,6 +10,12 @@ public interface IAllocationRepository
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsForWeekAsync(
+        IEnumerable<long> employeeIds,
+        DateOnly weekStart,
+        DateOnly weekEnd,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetActiveByProjectIdAsync(long projectId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(long? employeeId, long? projectId, string? status, CancellationToken cancellationToken = default);
     Task UpdateAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default);

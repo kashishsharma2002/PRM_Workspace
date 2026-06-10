@@ -29,6 +29,14 @@ public class EmployeeRepository(PrmDbContext context) : IEmployeeRepository
         return await query.OrderBy(e => e.Id).ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Employee>> GetByManagerIdAsync(
+        long managerUserId,
+        CancellationToken cancellationToken = default) =>
+        await context.Employees
+            .Where(e => e.ManagerId == managerUserId && e.IsActive)
+            .OrderBy(e => e.Id)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Employee employee, CancellationToken cancellationToken = default)
     {
         await context.Employees.AddAsync(employee, cancellationToken);
