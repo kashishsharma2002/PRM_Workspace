@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Server.Common;
+using Server.Common.Allocations;
 using Server.Data;
 using Server.Models.Entities;
 
@@ -9,7 +9,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 {
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.EmployeeId == employeeId && a.AllocationStatus == TimesheetConstants.AllocationStatusActive)
+            .Where(a => a.EmployeeId == employeeId && a.AllocationStatus == AllocationStatusConstants.Active)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(
@@ -21,7 +21,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             return [];
 
         return await context.ProjectAllocations
-            .Where(a => ids.Contains(a.EmployeeId) && a.AllocationStatus == TimesheetConstants.AllocationStatusActive)
+            .Where(a => ids.Contains(a.EmployeeId) && a.AllocationStatus == AllocationStatusConstants.Active)
             .ToListAsync(cancellationToken);
     }
 
@@ -32,7 +32,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
         CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
             .Where(a => a.EmployeeId == employeeId
-                && a.AllocationStatus == "ACTIVE"
+                && a.AllocationStatus == AllocationStatusConstants.Active
                 && a.AllocationStartDate <= weekEnd
                 && a.AllocationEndDate >= weekStart)
             .ToListAsync(cancellationToken);
@@ -55,7 +55,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 
         return await context.ProjectAllocations
             .Where(a => ids.Contains(a.EmployeeId)
-                && a.AllocationStatus == "ACTIVE"
+                && a.AllocationStatus == AllocationStatusConstants.Active
                 && a.AllocationStartDate <= weekEnd
                 && a.AllocationEndDate >= weekStart)
             .ToListAsync(cancellationToken);
@@ -66,7 +66,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
         DateOnly weekEnd,
         CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.AllocationStatus == "ACTIVE"
+            .Where(a => a.AllocationStatus == AllocationStatusConstants.Active
                 && a.AllocationStartDate <= weekEnd
                 && a.AllocationEndDate >= weekStart)
             .ToListAsync(cancellationToken);
@@ -75,7 +75,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
         long projectId,
         CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ProjectId == projectId && a.AllocationStatus == "ACTIVE")
+            .Where(a => a.ProjectId == projectId && a.AllocationStatus == AllocationStatusConstants.Active)
             .OrderBy(a => a.Id)
             .ToListAsync(cancellationToken);
 
@@ -99,7 +99,7 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(a => a.AllocationStatus == status.Trim().ToUpperInvariant());
         else
-            query = query.Where(a => a.AllocationStatus == "ACTIVE");
+            query = query.Where(a => a.AllocationStatus == AllocationStatusConstants.Active);
 
         return await query.OrderBy(a => a.Id).ToListAsync(cancellationToken);
     }

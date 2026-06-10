@@ -1,10 +1,13 @@
-using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Audit;
+using Server.Common.Timesheets;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Timesheets;
 using Server.Models.Entities;
+using Server.Services.Shared;
 
 namespace Server.Services.Timesheets;
 
@@ -17,8 +20,9 @@ public class TimesheetService(
     IUserRepository userRepository,
     IActivityTagRepository activityTagRepository,
     ISystemConfigRepository systemConfigRepository,
-    IAuditLogRepository auditLogRepository,
-    IMemoryCache memoryCache) : ITimesheetService
+    IAuditService auditService,
+    IMemoryCache memoryCache,
+    ILogger<TimesheetService> logger) : ITimesheetService
 {
     public async Task<TimesheetSubmitResponseDto> SubmitTimesheetAsync(
         long employeeId,
@@ -118,23 +122,24 @@ public class TimesheetService(
                 }
             }
 
-            await auditLogRepository.AddAsync(new AuditLog
-            {
-                ActorUserId = actorUserId,
-                EntityName = "TIMESHEETS",
-                EntityId = timesheet.Id,
-                ActionType = "CREATE",
-                NewValues = JsonSerializer.Serialize(new
+            await auditService.LogCreateAsync(
+                actorUserId,
+                AuditEntityConstants.Timesheets,
+                timesheet.Id,
+                new
                 {
                     timesheet.WeekStartDate,
                     timesheet.TotalHours,
                     LineItemCount = request.LineItems.Count
-                }),
-                CreatedAt = now
-            }, cancellationToken);
+                },
+                cancellationToken);
 
             await timesheetRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Timesheet submitted. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.Timesheets, timesheet.Id, actorUserId);
 
             return new TimesheetSubmitResponseDto
             {
@@ -439,7 +444,7 @@ public class TimesheetService(
     {
         var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
         if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
-            return 40m;
+            return TimesheetDefaults.DefaultMaxWeeklyHours;
 
         return maxHours;
     }

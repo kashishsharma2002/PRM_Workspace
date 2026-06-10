@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Server.Common;
+using Server.Common.Allocations;
+using Server.Common.Audit;
 using Server.Data;
+using Tests.Helpers;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
 using Server.Models.DTOs.Users;
@@ -29,9 +33,9 @@ public class EmployeeServiceTests : IDisposable
         var employeeSkillRepo = new EmployeeSkillRepository(_context);
         var allocationRepo = new AllocationRepository(_context);
         var projectRepo = new ProjectRepository(_context);
-        var auditRepo = new AuditLogRepository(_context);
+        var auditService = TestServiceFactory.CreateAuditService(_context);
 
-        _userService = new UserService(_context, userRepo, employeeRepo, auditRepo);
+        _userService = new UserService(_context, userRepo, employeeRepo, auditService, TestServiceFactory.CreateLogger<UserService>());
         var timesheetRepo = new TimesheetRepository(_context);
 
         _employeeService = new EmployeeService(
@@ -43,7 +47,8 @@ public class EmployeeServiceTests : IDisposable
             allocationRepo,
             projectRepo,
             timesheetRepo,
-            auditRepo);
+            auditService,
+            TestServiceFactory.CreateLogger<EmployeeService>());
     }
 
     private async Task<(long EmployeeId, long UserId)> CreateEmployeeAsync(string username = "emp.user")
@@ -132,15 +137,15 @@ public class EmployeeServiceTests : IDisposable
         var employee = await _context.Employees.FindAsync(employeeId);
         var user = await _context.Users.FindAsync(userId);
         var allocation = await _context.ProjectAllocations.FirstAsync();
-        var audit = await _context.AuditLogs.FirstAsync(a => a.EntityName == "EMPLOYEES");
+        var audit = await _context.AuditLogs.FirstAsync(a => a.EntityName == AuditEntityConstants.Employees);
 
         Assert.NotNull(employee);
         Assert.False(employee!.IsActive);
-        Assert.Equal("BENCH", employee.EmploymentStatus);
+        Assert.Equal(AllocationConstants.EmploymentStatusBench, employee.EmploymentStatus);
         Assert.NotNull(user);
         Assert.False(user!.IsActive);
-        Assert.Equal("ENDED", allocation.AllocationStatus);
-        Assert.Equal("DEACTIVATE", audit.ActionType);
+        Assert.Equal(AllocationStatusConstants.Ended, allocation.AllocationStatus);
+        Assert.Equal(AuditActionConstants.Deactivate, audit.ActionType);
     }
 
     [Fact]

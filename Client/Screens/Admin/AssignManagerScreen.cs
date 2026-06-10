@@ -43,7 +43,7 @@ public static class AssignManagerScreen
                 return;
             }
 
-            if (!manager.IsActive || !string.Equals(manager.Role, "MANAGER", StringComparison.OrdinalIgnoreCase))
+            if (!manager.IsActive || !string.Equals(manager.Role, Client.Common.RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
             {
                 ConsoleHelper.PrintError($"{manager.FullName} is not an active manager account.");
                 return;
@@ -73,7 +73,7 @@ public static class AssignManagerScreen
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
         }
     }
 }

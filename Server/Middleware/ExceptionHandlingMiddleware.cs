@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Server.Common;
+using Server.Common.Errors;
 using Server.Exceptions;
 
 namespace Server.Middleware;
@@ -18,7 +19,10 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         {
             context.Response.StatusCode = ex.StatusCode;
             await context.Response.WriteAsJsonAsync(
-                ApiResponse<object>.Fail(ex.Message, ex is ValidationAppException validation ? validation.Details : null),
+                ApiResponse<object>.Fail(
+                    ex.Message,
+                    ex.ErrorCode,
+                    ex is ValidationAppException validation ? validation.Details : null),
                 JsonOptions);
         }
         catch (Exception ex)
@@ -26,7 +30,7 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
             logger.LogError(ex, "Unhandled exception");
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             await context.Response.WriteAsJsonAsync(
-                ApiResponse<object>.Fail("An unexpected error occurred."),
+                ApiResponse<object>.Fail("An unexpected error occurred.", ErrorCodes.UnexpectedError),
                 JsonOptions);
         }
     }

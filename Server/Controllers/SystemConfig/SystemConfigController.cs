@@ -3,11 +3,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.SystemConfig;
 
 namespace Server.Controllers.SystemConfig;
 
-[Authorize(Roles = "ADMIN")]
+[Authorize(Roles = RoleConstants.Admin)]
 [ApiController]
 [Route("api/system-config")]
 public class SystemConfigController(ISystemConfigService systemConfigService) : ControllerBase

@@ -62,7 +62,7 @@ public static class ViewAllEmployeesScreen
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
         }
     }
 }

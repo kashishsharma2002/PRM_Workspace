@@ -1,4 +1,4 @@
-﻿using Client.Helpers;
+using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Auth;
 
@@ -55,7 +55,7 @@ public static class ChangePasswordScreen
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
             return false;
         }
     }

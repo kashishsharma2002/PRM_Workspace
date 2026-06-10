@@ -64,7 +64,7 @@ public static class ManageMilestonesScreen
             }
         }
         catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ConsoleHelper.PrintError(ex.Message); }
+        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 
     private static async Task AddMilestoneAsync(RestClient client, long projectId)

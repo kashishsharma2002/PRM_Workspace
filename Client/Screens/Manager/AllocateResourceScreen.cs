@@ -46,7 +46,7 @@ public static class AllocateResourceScreen
             }
             catch (Exception ex)
             {
-                ConsoleHelper.PrintError(ex.Message);
+                ErrorDisplayHelper.HandleException(ex);
             }
         }
     }
@@ -120,7 +120,7 @@ public static class AllocateResourceScreen
 
         var result = await client.PostAsync<CreateAllocationResponse>("/api/allocations", new CreateAllocationRequest
         {
-            EmployeeId = employeeId,
+            EmployeeId = employeeId.Value,
             ProjectId = selectedProject.Id,
             AllocationPercentage = percentage,
             AllocationStartDate = startDate,

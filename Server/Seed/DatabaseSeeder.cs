@@ -1,4 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Server.Common;
+using Server.Common.Allocations;
+using Server.Common.Projects;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Models.Entities;
 
@@ -33,7 +37,7 @@ public static class DatabaseSeeder
                 Email = AdminEmail,
                 FullName = "System Administrator",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(AdminPassword),
-                Role = "ADMIN",
+                Role = RoleConstants.Admin,
                 ForcePasswordChange = true,
                 IsActive = true,
                 CreatedAt = now,
@@ -65,7 +69,7 @@ public static class DatabaseSeeder
         var managerUserIds = new List<long>();
         foreach (var (username, email, fullName) in managers)
         {
-            var user = CreateUser(username, email, fullName, "MANAGER", now);
+            var user = CreateUser(username, email, fullName, RoleConstants.Manager, now);
             context.Users.Add(user);
             await context.SaveChangesAsync(cancellationToken);
 
@@ -77,15 +81,15 @@ public static class DatabaseSeeder
 
         var employees = new[]
         {
-            ("ravi.kumar", "ravi.kumar@techserve.com", "Ravi Kumar", "Backend", "ALLOCATED", managerUserIds[0]),
-            ("priya.sharma", "priya.sharma@techserve.com", "Priya Sharma", "Frontend", "BENCH", managerUserIds[0]),
-            ("anil.mehta", "anil.mehta@techserve.com", "Anil Mehta", "DevOps", "BENCH", managerUserIds[1]),
-            ("sara.khan", "sara.khan@techserve.com", "Sara Khan", "QA", "BENCH", managerUserIds[1])
+            ("ravi.kumar", "ravi.kumar@techserve.com", "Ravi Kumar", "Backend", AllocationConstants.EmploymentStatusAllocated, managerUserIds[0]),
+            ("priya.sharma", "priya.sharma@techserve.com", "Priya Sharma", "Frontend", AllocationConstants.EmploymentStatusBench, managerUserIds[0]),
+            ("anil.mehta", "anil.mehta@techserve.com", "Anil Mehta", "DevOps", AllocationConstants.EmploymentStatusBench, managerUserIds[1]),
+            ("sara.khan", "sara.khan@techserve.com", "Sara Khan", "QA", AllocationConstants.EmploymentStatusBench, managerUserIds[1])
         };
 
         foreach (var (username, email, fullName, department, status, managerId) in employees)
         {
-            var user = CreateUser(username, email, fullName, "EMPLOYEE", now);
+            var user = CreateUser(username, email, fullName, RoleConstants.Employee, now);
             context.Users.Add(user);
             await context.SaveChangesAsync(cancellationToken);
 
@@ -154,10 +158,10 @@ public static class DatabaseSeeder
         var now = DateTime.UtcNow;
         var projects = new[]
         {
-            ("Alpha Portal", "Customer web portal", new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 30), "ACTIVE", 120, ankit.Id),
-            ("Beta CRM", "CRM modernization", new DateOnly(2026, 2, 1), new DateOnly(2026, 8, 15), "ACTIVE", 80, ankit.Id),
-            ("Gamma Rewrite", "Legacy rewrite", new DateOnly(2026, 2, 1), new DateOnly(2026, 7, 1), "ACTIVE", 60, neha.Id),
-            ("Delta Migrate", "Data migration", new DateOnly(2026, 4, 1), new DateOnly(2026, 9, 30), "PLANNED", 100, neha.Id)
+            ("Alpha Portal", "Customer web portal", new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 30), ProjectStatusConstants.Active, 120, ankit.Id),
+            ("Beta CRM", "CRM modernization", new DateOnly(2026, 2, 1), new DateOnly(2026, 8, 15), ProjectStatusConstants.Active, 80, ankit.Id),
+            ("Gamma Rewrite", "Legacy rewrite", new DateOnly(2026, 2, 1), new DateOnly(2026, 7, 1), ProjectStatusConstants.Active, 60, neha.Id),
+            ("Delta Migrate", "Data migration", new DateOnly(2026, 4, 1), new DateOnly(2026, 9, 30), ProjectStatusConstants.Planned, 100, neha.Id)
         };
 
         var projectIds = new List<long>();
@@ -171,7 +175,7 @@ public static class DatabaseSeeder
                 StartDate = start,
                 EndDate = end,
                 ProjectStatus = status,
-                HealthStatus = "GREEN",
+                HealthStatus = HealthStatusConstants.Green,
                 TotalStoryPoints = sp,
                 ManagerUserId = managerId,
                 IsActive = true,
@@ -189,12 +193,12 @@ public static class DatabaseSeeder
         if (projectIds.Count >= 3)
         {
             context.ProjectMilestones.AddRange(
-                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Design Complete", DueDate = new DateOnly(2026, 4, 1), StoryPoints = 20, MilestoneStatus = "DONE", SortOrder = 1, CreatedAt = now, UpdatedAt = now },
-                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Backend API", DueDate = new DateOnly(2026, 4, 15), StoryPoints = 40, MilestoneStatus = "IN_PROGRESS", SortOrder = 2, CreatedAt = now, UpdatedAt = now },
-                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Testing", DueDate = new DateOnly(2026, 4, 30), StoryPoints = 35, MilestoneStatus = "NOT_STARTED", SortOrder = 3, CreatedAt = now, UpdatedAt = now },
-                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Go Live", DueDate = new DateOnly(2026, 5, 15), StoryPoints = 25, MilestoneStatus = "NOT_STARTED", SortOrder = 4, CreatedAt = now, UpdatedAt = now },
-                new ProjectMilestone { ProjectId = projectIds[1], MilestoneTitle = "Requirements", DueDate = new DateOnly(2026, 3, 15), StoryPoints = 15, MilestoneStatus = "DONE", SortOrder = 1, CreatedAt = now, UpdatedAt = now },
-                new ProjectMilestone { ProjectId = projectIds[2], MilestoneTitle = "Architecture", DueDate = new DateOnly(2026, 3, 1), StoryPoints = 10, MilestoneStatus = "IN_PROGRESS", SortOrder = 1, CreatedAt = now, UpdatedAt = now });
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Design Complete", DueDate = new DateOnly(2026, 4, 1), StoryPoints = 20, MilestoneStatus = MilestoneStatusConstants.Done, SortOrder = 1, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Backend API", DueDate = new DateOnly(2026, 4, 15), StoryPoints = 40, MilestoneStatus = MilestoneStatusConstants.InProgress, SortOrder = 2, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Testing", DueDate = new DateOnly(2026, 4, 30), StoryPoints = 35, MilestoneStatus = MilestoneStatusConstants.NotStarted, SortOrder = 3, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[0], MilestoneTitle = "Go Live", DueDate = new DateOnly(2026, 5, 15), StoryPoints = 25, MilestoneStatus = MilestoneStatusConstants.NotStarted, SortOrder = 4, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[1], MilestoneTitle = "Requirements", DueDate = new DateOnly(2026, 3, 15), StoryPoints = 15, MilestoneStatus = MilestoneStatusConstants.Done, SortOrder = 1, CreatedAt = now, UpdatedAt = now },
+                new ProjectMilestone { ProjectId = projectIds[2], MilestoneTitle = "Architecture", DueDate = new DateOnly(2026, 3, 1), StoryPoints = 10, MilestoneStatus = MilestoneStatusConstants.InProgress, SortOrder = 1, CreatedAt = now, UpdatedAt = now });
 
             await context.SaveChangesAsync(cancellationToken);
         }
@@ -213,7 +217,7 @@ public static class DatabaseSeeder
                     AllocationPercentage = 50,
                     AllocationStartDate = new DateOnly(2026, 3, 1),
                     AllocationEndDate = new DateOnly(2026, 6, 30),
-                    AllocationStatus = "ACTIVE",
+                    AllocationStatus = AllocationStatusConstants.Active,
                     AllocatedByManagerId = ankit.Id,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -225,7 +229,7 @@ public static class DatabaseSeeder
                     AllocationPercentage = 50,
                     AllocationStartDate = new DateOnly(2026, 4, 1),
                     AllocationEndDate = new DateOnly(2026, 7, 31),
-                    AllocationStatus = "ACTIVE",
+                    AllocationStatus = AllocationStatusConstants.Active,
                     AllocatedByManagerId = ankit.Id,
                     CreatedAt = now,
                     UpdatedAt = now

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Server.Common;
+using Server.Common.Allocations;
+using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Allocations;
@@ -32,7 +34,8 @@ public class AllocationServiceTests : IDisposable
             new EmployeeRepository(_context),
             new UserRepository(_context),
             new ProjectRepository(_context),
-            new AuditLogRepository(_context));
+            TestServiceFactory.CreateAuditService(_context),
+            TestServiceFactory.CreateLogger<AllocationService>());
     }
 
     private (long ManagerUserId, long EmployeeId, long ProjectId) SeedData()
@@ -99,7 +102,7 @@ public class AllocationServiceTests : IDisposable
             AllocationPercentage = 50,
             AllocationStartDate = new DateOnly(2026, 3, 1),
             AllocationEndDate = new DateOnly(2026, 6, 30),
-            AllocationStatus = TimesheetConstants.AllocationStatusActive,
+            AllocationStatus = AllocationStatusConstants.Active,
             AllocatedByManagerId = manager.Id,
             CreatedAt = now,
             UpdatedAt = now
@@ -225,7 +228,7 @@ public class AllocationServiceTests : IDisposable
         var result = await _allocationService.EndAllocationAsync(_managerUserId, allocation.Id);
 
         var endedAllocation = await _context.ProjectAllocations.FindAsync(allocation.Id);
-        Assert.Equal(TimesheetConstants.AllocationStatusEnded, endedAllocation!.AllocationStatus);
+        Assert.Equal(AllocationStatusConstants.Ended, endedAllocation!.AllocationStatus);
         Assert.Equal(AllocationConstants.EmploymentStatusBench, result.EmploymentStatus);
 
         var employee = await _context.Employees.FindAsync(_employeeId);

@@ -43,7 +43,7 @@ public static class ViewAllocationsScreen
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
         }
     }
 }

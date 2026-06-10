@@ -1,4 +1,5 @@
-﻿using Client.Helpers;
+﻿using Client.Common;
+using Client.Helpers;
 using Client.HttpClients;
 using Client.Screens;
 using Client.Screens.Admin;
@@ -46,11 +47,11 @@ public static class AppStarter
     {
         switch (SessionStore.Role)
         {
-            case "ADMIN":
+            case RoleConstants.Admin:
                 return !await AdminMenuScreen.RunAsync(client);
-            case "MANAGER":
+            case RoleConstants.Manager:
                 return !await ManagerMenuScreen.RunAsync(client);
-            case "EMPLOYEE":
+            case RoleConstants.Employee:
                 return !await EmployeeMenuScreen.RunAsync(client);
             default:
                 ConsoleHelper.PrintError($"Unknown role: {SessionStore.Role}");

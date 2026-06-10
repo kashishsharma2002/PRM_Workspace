@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging.Abstractions;
 using Server.Common;
 using Server.Data;
 using Server.Models.Entities;
+using Tests.Helpers;
 
 namespace Tests;
 
@@ -37,8 +37,8 @@ public class SchedulerHealthServiceTests : IDisposable
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
-            new AuditLogRepository(_context),
-            NullLogger<ProjectService>.Instance);
+            TestServiceFactory.CreateAuditService(_context),
+            TestServiceFactory.CreateLogger<ProjectService>());
 
     private (long cleanId, long overdueId, long multiFlagId) SeedData()
     {

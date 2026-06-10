@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Ai;
 using Server.Services.Ai;
 
@@ -11,7 +12,7 @@ namespace Server.Controllers.Ai;
 [Route("api/ai")]
 public class AiInsightsController(IAiIntegrationService aiIntegrationService) : ControllerBase
 {
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("projects/{projectId:long}/risk-summary")]
     public async Task<ActionResult<ApiResponse<AiRiskSummaryResponseDto>>> GetRiskSummary(
         long projectId,
@@ -22,7 +23,7 @@ public class AiInsightsController(IAiIntegrationService aiIntegrationService) : 
         return Ok(ApiResponse<AiRiskSummaryResponseDto>.Ok(result, "Risk summary generated."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("projects/{projectId:long}/skill-match")]
     public async Task<ActionResult<ApiResponse<AiSkillMatchResponseDto>>> GetSkillMatch(
         long projectId,

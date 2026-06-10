@@ -3,11 +3,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Users;
 
 namespace Server.Controllers.Users;
 
-[Authorize(Roles = "ADMIN")]
+[Authorize(Roles = RoleConstants.Admin)]
 [ApiController]
 [Route("api/users")]
 public class UserController(IUserService userService) : ControllerBase

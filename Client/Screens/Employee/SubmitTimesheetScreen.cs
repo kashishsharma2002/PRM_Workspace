@@ -139,7 +139,7 @@ public static class SubmitTimesheetScreen
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
         }
     }
 }

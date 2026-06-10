@@ -40,8 +40,9 @@ public class ManagerTimesheetServiceTests : IDisposable
             new UserRepository(_context),
             new ActivityTagRepository(_context),
             new SystemConfigRepository(_context),
-            new AuditLogRepository(_context),
-            new MemoryCache(new MemoryCacheOptions()));
+            TestServiceFactory.CreateAuditService(_context),
+            new MemoryCache(new MemoryCacheOptions()),
+            TestServiceFactory.CreateLogger<TimesheetService>());
     }
 
     private (long ankitId, long nehaId, long raviEmpId, long anilEmpId, long projectId) SeedData()

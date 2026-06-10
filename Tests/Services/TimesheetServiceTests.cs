@@ -37,8 +37,9 @@ public class TimesheetServiceTests : IDisposable
             new UserRepository(_context),
             new ActivityTagRepository(_context),
             new SystemConfigRepository(_context),
-            new AuditLogRepository(_context),
-            new MemoryCache(new MemoryCacheOptions()));
+            TestServiceFactory.CreateAuditService(_context),
+            new MemoryCache(new MemoryCacheOptions()),
+            TestServiceFactory.CreateLogger<TimesheetService>());
     }
 
     private (long employeeId, long userId, long projectId) SeedData()

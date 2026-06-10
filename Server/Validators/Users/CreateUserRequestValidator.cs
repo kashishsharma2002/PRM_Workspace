@@ -1,11 +1,11 @@
 using FluentValidation;
+using Server.Common.Roles;
 using Server.Models.DTOs.Users;
 
 namespace Server.Validators.Users;
 
 public class CreateUserRequestValidator : AbstractValidator<CreateUserRequestDto>
 {
-    private static readonly string[] AllowedRoles = ["ADMIN", "MANAGER", "EMPLOYEE"];
 
     public CreateUserRequestValidator()
     {
@@ -30,7 +30,7 @@ public class CreateUserRequestValidator : AbstractValidator<CreateUserRequestDto
 
         RuleFor(x => x.Role)
             .NotEmpty().WithMessage("Role is required.")
-            .Must(r => AllowedRoles.Contains(r, StringComparer.OrdinalIgnoreCase))
+            .Must(r => RoleConstants.All.Contains(r, StringComparer.OrdinalIgnoreCase))
             .WithMessage("Role must be ADMIN, MANAGER, or EMPLOYEE.");
     }
 }

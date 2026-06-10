@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Allocations;
 
 namespace Server.Controllers.Allocations;
@@ -11,7 +12,7 @@ namespace Server.Controllers.Allocations;
 [Route("api/allocations")]
 public class AllocationController(IAllocationService allocationService) : ControllerBase
 {
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<CreateAllocationResponseDto>>> CreateAllocation(
         [FromBody] CreateAllocationRequestDto request,
@@ -23,7 +24,7 @@ public class AllocationController(IAllocationService allocationService) : Contro
             ApiResponse<CreateAllocationResponseDto>.Ok(result, "Allocation created."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpPut("{id:long}/end")]
     public async Task<ActionResult<ApiResponse<EndAllocationResponseDto>>> EndAllocation(
         long id,
@@ -34,7 +35,7 @@ public class AllocationController(IAllocationService allocationService) : Contro
         return Ok(ApiResponse<EndAllocationResponseDto>.Ok(result, "Allocation ended."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<AllocationListResponseDto>>> GetAllAllocations(
         [FromQuery] long? employeeId,
@@ -46,7 +47,7 @@ public class AllocationController(IAllocationService allocationService) : Contro
         return Ok(ApiResponse<AllocationListResponseDto>.Ok(result, "Allocations retrieved."));
     }
 
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("my")]
     public async Task<ActionResult<ApiResponse<EmployeeAllocationListResponseDto>>> GetMyAllocations(
         CancellationToken cancellationToken)

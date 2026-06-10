@@ -1,11 +1,23 @@
+using Server.Common.Projects;
+
 namespace Server.Common;
 
 public static class ProjectConstants
 {
-    public static readonly string[] CreateStatuses = ["PLANNED", "ACTIVE", "ON_HOLD"];
-    public static readonly string[] UpdateStatuses = ["PLANNED", "ACTIVE", "ON_HOLD", "COMPLETED"];
-    public static readonly string[] MilestoneStatuses = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
-    public static readonly string[] HealthStatuses = ["GREEN", "AMBER", "RED"];
+    public static readonly string[] CreateStatuses =
+        [ProjectStatusConstants.Planned, ProjectStatusConstants.Active, ProjectStatusConstants.OnHold];
+
+    public static readonly string[] UpdateStatuses =
+    [
+        ProjectStatusConstants.Planned, ProjectStatusConstants.Active,
+        ProjectStatusConstants.OnHold, ProjectStatusConstants.Completed
+    ];
+
+    public static readonly string[] MilestoneStatuses =
+        [MilestoneStatusConstants.NotStarted, MilestoneStatusConstants.InProgress, MilestoneStatusConstants.Done];
+
+    public static readonly string[] HealthStatuses =
+        [HealthStatusConstants.Green, HealthStatusConstants.Amber, HealthStatusConstants.Red];
 
     public const string FlagOverdueMilestone = "OVERDUE_MILESTONE";
     public const string FlagLowHours = "LOW_HOURS";

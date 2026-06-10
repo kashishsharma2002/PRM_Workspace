@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Server.Common;
+using Server.Common.Allocations;
+using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
@@ -33,7 +35,8 @@ public class EmployeeServiceTeamTests : IDisposable
         var timesheetRepo = new TimesheetRepository(_context);
         var auditRepo = new AuditLogRepository(_context);
 
-        _userService = new UserService(_context, userRepo, employeeRepo, auditRepo);
+        var auditService = TestServiceFactory.CreateAuditService(_context);
+        _userService = new UserService(_context, userRepo, employeeRepo, auditService, TestServiceFactory.CreateLogger<UserService>());
         _employeeService = new EmployeeService(
             _context,
             employeeRepo,
@@ -43,7 +46,8 @@ public class EmployeeServiceTeamTests : IDisposable
             allocationRepo,
             projectRepo,
             timesheetRepo,
-            auditRepo);
+            auditService,
+            TestServiceFactory.CreateLogger<EmployeeService>());
     }
 
     [Fact]
@@ -128,7 +132,7 @@ public class EmployeeServiceTeamTests : IDisposable
                 AllocationPercentage = 50,
                 AllocationStartDate = new DateOnly(2026, 3, 1),
                 AllocationEndDate = new DateOnly(2026, 12, 31),
-                AllocationStatus = TimesheetConstants.AllocationStatusActive,
+                AllocationStatus = AllocationStatusConstants.Active,
                 AllocatedByManagerId = managerId,
                 CreatedAt = now,
                 UpdatedAt = now

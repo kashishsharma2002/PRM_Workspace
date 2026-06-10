@@ -1,11 +1,16 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Audit;
+using Server.Common.Errors;
+using Server.Common.Projects;
+using Server.Common.Roles;
+using Server.Common.Timesheets;
 using Server.Exceptions;
 using Server.Models.DTOs.Projects;
 using Server.Models.DTOs.Scheduler;
 using Server.Models.Entities;
 using Server.Scheduler;
+using Server.Services.Shared;
 
 namespace Server.Services.Projects;
 
@@ -17,7 +22,7 @@ public class ProjectService(
     IEmployeeRepository employeeRepository,
     ITimesheetRepository timesheetRepository,
     ISystemConfigRepository systemConfigRepository,
-    IAuditLogRepository auditLogRepository,
+    IAuditService auditService,
     ILogger<ProjectService> logger) : IProjectService
 {
     public async Task<CreateProjectResponseDto> CreateProjectAsync(
@@ -41,7 +46,7 @@ public class ProjectService(
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             ProjectStatus = status,
-            HealthStatus = "GREEN",
+            HealthStatus = HealthStatusConstants.Green,
             TotalStoryPoints = request.TotalStoryPoints,
             ManagerUserId = request.ManagerUserId,
             IsActive = true,
@@ -55,17 +60,18 @@ public class ProjectService(
         project.ProjectCode = $"PRJ-{project.Id:D6}";
         await projectRepository.UpdateAsync(project, cancellationToken);
 
-        await auditLogRepository.AddAsync(new AuditLog
-        {
-            ActorUserId = actorUserId,
-            EntityName = "PROJECTS",
-            EntityId = project.Id,
-            ActionType = "CREATE",
-            NewValues = JsonSerializer.Serialize(new { project.ProjectCode, project.ProjectName, project.ManagerUserId }),
-            CreatedAt = now
-        }, cancellationToken);
+        await auditService.LogCreateAsync(
+            actorUserId,
+            AuditEntityConstants.Projects,
+            project.Id,
+            new { project.ProjectCode, project.ProjectName, project.ManagerUserId },
+            cancellationToken);
 
         await projectRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Project created. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Projects, project.Id, actorUserId);
 
         return new CreateProjectResponseDto
         {
@@ -190,7 +196,7 @@ public class ProjectService(
             MilestoneTitle = request.MilestoneTitle.Trim(),
             DueDate = request.DueDate,
             StoryPoints = request.StoryPoints,
-            MilestoneStatus = "NOT_STARTED",
+            MilestoneStatus = MilestoneStatusConstants.NotStarted,
             SortOrder = sortOrder,
             CreatedAt = now,
             UpdatedAt = now
@@ -243,7 +249,7 @@ public class ProjectService(
         CancellationToken cancellationToken = default)
     {
         var project = await projectRepository.GetByIdAsync(projectId, cancellationToken)
-            ?? throw new NotFoundAppException("Project not found.");
+            ?? throw new NotFoundAppException("Project not found.", ErrorCodes.ProjectNotFound);
 
         if (project.ManagerUserId != managerUserId)
             throw new NotFoundAppException("Project not found.");
@@ -392,26 +398,26 @@ public class ProjectService(
     {
         var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
         if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
-            return 40m;
+            return TimesheetDefaults.DefaultMaxWeeklyHours;
 
         return maxHours;
     }
 
     private static int SumDoneStoryPoints(IReadOnlyList<ProjectMilestone> milestones) =>
-        milestones.Where(m => m.MilestoneStatus == "DONE").Sum(m => m.StoryPoints);
+        milestones.Where(m => m.MilestoneStatus == MilestoneStatusConstants.Done).Sum(m => m.StoryPoints);
 
     private async Task ValidateManagerAsync(long managerUserId, CancellationToken cancellationToken)
     {
         var manager = await userRepository.GetByIdAsync(managerUserId, cancellationToken)
             ?? throw new ValidationAppException("Manager user not found.");
 
-        if (!manager.IsActive || !string.Equals(manager.Role, "MANAGER", StringComparison.OrdinalIgnoreCase))
-            throw new ValidationAppException("Specified user is not an active manager.");
+        if (!manager.IsActive || !string.Equals(manager.Role, RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
+            throw new ValidationAppException("Specified user is not an active manager.", errorCode: ErrorCodes.InvalidManager);
     }
 
     private async Task<Project> GetProjectOrThrowAsync(long projectId, CancellationToken cancellationToken)
     {
         return await projectRepository.GetByIdAsync(projectId, cancellationToken)
-            ?? throw new NotFoundAppException("Project not found.");
+            ?? throw new NotFoundAppException("Project not found.", ErrorCodes.ProjectNotFound);
     }
 }

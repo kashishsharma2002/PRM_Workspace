@@ -57,7 +57,7 @@ public static class SystemConfigScreen
             }
         }
         catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ConsoleHelper.PrintError(ex.Message); }
+        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 
     private static async Task UpdateApiKeyAsync(RestClient client)

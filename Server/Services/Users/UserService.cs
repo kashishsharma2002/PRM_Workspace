@@ -1,9 +1,13 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Server.Common;
+using Server.Common.Audit;
+using Server.Common.Errors;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Users;
 using Server.Models.Entities;
+using Server.Services.Shared;
 
 namespace Server.Services.Users;
 
@@ -11,7 +15,8 @@ public class UserService(
     PrmDbContext context,
     IUserRepository userRepository,
     IEmployeeRepository employeeRepository,
-    IAuditLogRepository auditLogRepository) : IUserService
+    IAuditService auditService,
+    ILogger<UserService> logger) : IUserService
 {
     public async Task<CreateUserResponseDto> CreateUserAccountAsync(
         long actorUserId,
@@ -50,7 +55,7 @@ public class UserService(
             {
                 UserId = user.Id,
                 EmployeeCode = $"EMP-{user.Id:D6}",
-                EmploymentStatus = "BENCH",
+                EmploymentStatus = AllocationConstants.EmploymentStatusBench,
                 IsActive = true,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -58,24 +63,19 @@ public class UserService(
 
             await employeeRepository.AddAsync(employee, cancellationToken);
 
-            await auditLogRepository.AddAsync(new AuditLog
-            {
-                ActorUserId = actorUserId,
-                EntityName = "USERS",
-                EntityId = user.Id,
-                ActionType = "CREATE",
-                NewValues = JsonSerializer.Serialize(new
-                {
-                    user.Username,
-                    user.Email,
-                    user.Role,
-                    employee.EmployeeCode
-                }),
-                CreatedAt = now
-            }, cancellationToken);
+            await auditService.LogCreateAsync(
+                actorUserId,
+                AuditEntityConstants.Users,
+                user.Id,
+                new { user.Username, user.Email, user.Role, employee.EmployeeCode },
+                cancellationToken);
 
             await userRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "User created. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.Users, user.Id, actorUserId);
 
             return new CreateUserResponseDto
             {
@@ -128,17 +128,19 @@ public class UserService(
 
         await userRepository.UpdateAsync(user, cancellationToken);
 
-        await auditLogRepository.AddAsync(new AuditLog
-        {
-            ActorUserId = actorUserId,
-            EntityName = "USERS",
-            EntityId = user.Id,
-            ActionType = "UPDATE",
-            NewValues = JsonSerializer.Serialize(new { action = "RESET_PASSWORD", user.Username }),
-            CreatedAt = now
-        }, cancellationToken);
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.Users,
+            user.Id,
+            null,
+            new { action = "RESET_PASSWORD", user.Username },
+            cancellationToken);
 
         await userRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Password reset. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Users, user.Id, actorUserId);
     }
 
     public async Task DeactivateUserAsync(
@@ -167,18 +169,19 @@ public class UserService(
             await employeeRepository.UpdateAsync(employee, cancellationToken);
         }
 
-        await auditLogRepository.AddAsync(new AuditLog
-        {
-            ActorUserId = actorUserId,
-            EntityName = "USERS",
-            EntityId = user.Id,
-            ActionType = "DEACTIVATE",
-            OldValues = JsonSerializer.Serialize(new { isActive = true }),
-            NewValues = JsonSerializer.Serialize(new { isActive = false, user.Username }),
-            CreatedAt = now
-        }, cancellationToken);
+        await auditService.LogDeactivateAsync(
+            actorUserId,
+            AuditEntityConstants.Users,
+            user.Id,
+            new { isActive = true },
+            new { isActive = false, user.Username },
+            cancellationToken);
 
         await userRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "User deactivated. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Users, user.Id, actorUserId);
     }
 
     public async Task ReactivateUserAsync(
@@ -204,23 +207,24 @@ public class UserService(
             await employeeRepository.UpdateAsync(employee, cancellationToken);
         }
 
-        await auditLogRepository.AddAsync(new AuditLog
-        {
-            ActorUserId = actorUserId,
-            EntityName = "USERS",
-            EntityId = user.Id,
-            ActionType = "UPDATE",
-            OldValues = JsonSerializer.Serialize(new { isActive = false }),
-            NewValues = JsonSerializer.Serialize(new { isActive = true, user.Username }),
-            CreatedAt = now
-        }, cancellationToken);
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.Users,
+            user.Id,
+            new { isActive = false },
+            new { isActive = true, user.Username },
+            cancellationToken);
 
         await userRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "User reactivated. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Users, user.Id, actorUserId);
     }
 
     private async Task<User> GetUserOrThrowAsync(long userId, CancellationToken cancellationToken)
     {
         return await userRepository.GetByIdAsync(userId, cancellationToken)
-            ?? throw new NotFoundAppException("User not found.");
+            ?? throw new NotFoundAppException("User not found.", ErrorCodes.UserNotFound);
     }
 }

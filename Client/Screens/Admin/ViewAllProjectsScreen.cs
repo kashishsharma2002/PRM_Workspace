@@ -33,6 +33,6 @@ public static class ViewAllProjectsScreen
             Console.WriteLine();
         }
         catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ConsoleHelper.PrintError(ex.Message); }
+        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 }

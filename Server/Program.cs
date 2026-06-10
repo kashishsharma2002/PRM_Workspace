@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Server.AI;
 using Server.Common;
+using Server.Common.Errors;
+using Server.Services.Shared;
 using Server.Data;
 using Server.Middleware;
 using Server.Scheduler;
@@ -29,6 +31,7 @@ builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IMilestoneRepository, MilestoneRepository>();
 builder.Services.AddScoped<ISystemConfigRepository, SystemConfigRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
@@ -45,9 +48,9 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddDataProtection();
 builder.Services.AddSingleton<ConfigEncryptionHelper>();
 builder.Services.AddScoped<IAiIntegrationService, AiIntegrationService>();
-builder.Services.AddSingleton<GeminiClient>();
-builder.Services.AddSingleton<GroqClient>();
-builder.Services.AddSingleton<LlmClientFactory>();
+builder.Services.AddSingleton<ILlmClient, GeminiClient>();
+builder.Services.AddSingleton<ILlmClient, GroqClient>();
+builder.Services.AddSingleton<ILlmClientResolver, LlmClientResolver>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
     ?? throw new InvalidOperationException("JwtSettings configuration is missing.");
@@ -83,7 +86,7 @@ builder.Services.AddControllers()
                 .Select(e => e.ErrorMessage)
                 .ToList();
 
-            return new BadRequestObjectResult(ApiResponse<object>.Fail("Validation failed.", errors));
+            return new BadRequestObjectResult(ApiResponse<object>.Fail("Validation failed.", ErrorCodes.ValidationFailed, errors));
         };
     })
     .AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

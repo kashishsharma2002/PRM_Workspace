@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -26,9 +27,9 @@ public static class CreateUserAccountScreen
         var roleChoice = Console.ReadLine()?.Trim();
         var role = roleChoice switch
         {
-            "1" => "ADMIN",
-            "2" => "MANAGER",
-            "3" => "EMPLOYEE",
+            "1" => RoleConstants.Admin,
+            "2" => RoleConstants.Manager,
+            "3" => RoleConstants.Employee,
             _ => string.Empty
         };
 
@@ -66,12 +67,12 @@ public static class CreateUserAccountScreen
         }
         catch (SessionExpiredException ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
             throw;
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
         }
     }
 

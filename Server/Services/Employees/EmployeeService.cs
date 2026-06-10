@@ -1,10 +1,15 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Allocations;
+using Server.Common.Audit;
+using Server.Common.Errors;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
 using Server.Models.Entities;
+using Server.Services.Shared;
 
 namespace Server.Services.Employees;
 
@@ -17,7 +22,8 @@ public class EmployeeService(
     IAllocationRepository allocationRepository,
     IProjectRepository projectRepository,
     ITimesheetRepository timesheetRepository,
-    IAuditLogRepository auditLogRepository) : IEmployeeService
+    IAuditService auditService,
+    ILogger<EmployeeService> logger) : IEmployeeService
 {
     public async Task<EmployeeListResponseDto> GetAllEmployeesAsync(
         string? status,
@@ -41,8 +47,8 @@ public class EmployeeService(
         {
             Employees = items,
             Total = items.Count,
-            AllocatedCount = items.Count(i => i.EmploymentStatus == "ALLOCATED"),
-            BenchCount = items.Count(i => i.EmploymentStatus == "BENCH")
+            AllocatedCount = items.Count(i => i.EmploymentStatus == AllocationConstants.EmploymentStatusAllocated),
+            BenchCount = items.Count(i => i.EmploymentStatus == AllocationConstants.EmploymentStatusBench)
         };
     }
 
@@ -141,7 +147,7 @@ public class EmployeeService(
 
             foreach (var allocation in activeAllocations)
             {
-                allocation.AllocationStatus = "ENDED";
+                allocation.AllocationStatus = AllocationStatusConstants.Ended;
                 allocation.AllocationEndDate = today;
                 allocation.UpdatedAt = now;
                 await allocationRepository.UpdateAsync(allocation, cancellationToken);
@@ -149,7 +155,7 @@ public class EmployeeService(
             }
 
             employee.IsActive = false;
-            employee.EmploymentStatus = "BENCH";
+            employee.EmploymentStatus = AllocationConstants.EmploymentStatusBench;
             employee.UpdatedAt = now;
             await employeeRepository.UpdateAsync(employee, cancellationToken);
 
@@ -157,24 +163,20 @@ public class EmployeeService(
             user.UpdatedAt = now;
             await userRepository.UpdateAsync(user, cancellationToken);
 
-            await auditLogRepository.AddAsync(new AuditLog
-            {
-                ActorUserId = actorUserId,
-                EntityName = "EMPLOYEES",
-                EntityId = employee.Id,
-                ActionType = "DEACTIVATE",
-                OldValues = JsonSerializer.Serialize(new { isActive = true, employmentStatus = oldEmploymentStatus }),
-                NewValues = JsonSerializer.Serialize(new
-                {
-                    isActive = false,
-                    employmentStatus = "BENCH",
-                    endedAllocationIds
-                }),
-                CreatedAt = now
-            }, cancellationToken);
+            await auditService.LogDeactivateAsync(
+                actorUserId,
+                AuditEntityConstants.Employees,
+                employee.Id,
+                new { isActive = true, employmentStatus = oldEmploymentStatus },
+                new { isActive = false, employmentStatus = AllocationConstants.EmploymentStatusBench, endedAllocationIds },
+                cancellationToken);
 
             await employeeRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Employee deactivated. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.Employees, employee.Id, actorUserId);
         }
         catch
         {
@@ -260,8 +262,8 @@ public class EmployeeService(
         var manager = await userRepository.GetByIdAsync(request.ManagerUserId, cancellationToken)
             ?? throw new NotFoundAppException("Manager user not found.");
 
-        if (!manager.IsActive || !string.Equals(manager.Role, "MANAGER", StringComparison.OrdinalIgnoreCase))
-            throw new ValidationAppException("Specified user is not an active manager.");
+        if (!manager.IsActive || !string.Equals(manager.Role, RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
+            throw new ValidationAppException("Specified user is not an active manager.", errorCode: ErrorCodes.InvalidManager);
 
         if (employee.UserId == request.ManagerUserId)
             throw new ValidationAppException("Employee cannot be their own manager.");
@@ -351,10 +353,10 @@ public class EmployeeService(
         CancellationToken cancellationToken = default)
     {
         var employee = await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
-            ?? throw new NotFoundAppException("Employee not found.");
+            ?? throw new NotFoundAppException("Employee not found.", ErrorCodes.EmployeeNotFound);
 
         if (employee.ManagerId != managerUserId)
-            throw new ForbiddenAppException("Employee is not on your team.");
+            throw new ForbiddenAppException("Employee is not on your team.", ErrorCodes.EmployeeNotOnTeam);
 
         var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
             ?? throw new NotFoundAppException("Linked user not found.");
@@ -411,6 +413,6 @@ public class EmployeeService(
     private async Task<Employee> GetEmployeeOrThrowAsync(long employeeId, CancellationToken cancellationToken)
     {
         return await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
-            ?? throw new NotFoundAppException("Employee not found.");
+            ?? throw new NotFoundAppException("Employee not found.", ErrorCodes.EmployeeNotFound);
     }
 }

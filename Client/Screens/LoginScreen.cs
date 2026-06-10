@@ -1,4 +1,4 @@
-﻿using Client.Helpers;
+using Client.Helpers;
 using Client.HttpClients;
 
 namespace Client.Screens;
@@ -44,12 +44,12 @@ public static class LoginScreen
         }
         catch (SessionExpiredException ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
             return false;
         }
         catch (Exception ex)
         {
-            ConsoleHelper.PrintError(ex.Message);
+            ErrorDisplayHelper.HandleException(ex);
             return false;
         }
     }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Server.Data;
 using Server.Exceptions;
@@ -23,7 +24,8 @@ public class UserServiceCreateTests : IDisposable
             _context,
             new UserRepository(_context),
             new EmployeeRepository(_context),
-            new AuditLogRepository(_context));
+            TestServiceFactory.CreateAuditService(_context),
+            TestServiceFactory.CreateLogger<UserService>());
     }
 
     [Fact]

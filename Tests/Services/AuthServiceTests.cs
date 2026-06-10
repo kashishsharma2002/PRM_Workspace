@@ -6,6 +6,7 @@ using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Auth;
 using Server.Models.Entities;
+using Tests.Helpers;
 
 namespace Tests;
 
@@ -34,7 +35,7 @@ public class AuthServiceTests : IDisposable
             ExpiryHours = 8
         });
 
-        _authService = new AuthService(userRepo, new JwtTokenService(jwtSettings));
+        _authService = new AuthService(userRepo, new JwtTokenService(jwtSettings), TestServiceFactory.CreateLogger<AuthService>());
 
         var now = DateTime.UtcNow;
         _user = new User

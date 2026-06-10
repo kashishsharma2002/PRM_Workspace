@@ -1,9 +1,12 @@
-using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Allocations;
+using Server.Common.Audit;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Allocations;
 using Server.Models.Entities;
+using Server.Services.Shared;
 
 namespace Server.Services.Allocations;
 
@@ -13,7 +16,8 @@ public class AllocationService(
     IEmployeeRepository employeeRepository,
     IUserRepository userRepository,
     IProjectRepository projectRepository,
-    IAuditLogRepository auditLogRepository) : IAllocationService
+    IAuditService auditService,
+    ILogger<AllocationService> logger) : IAllocationService
 {
     public async Task<AllocationListResponseDto> GetAllAllocationsAsync(
         long? employeeId,
@@ -51,7 +55,7 @@ public class AllocationService(
         return new AllocationListResponseDto
         {
             Allocations = items,
-            TotalActiveCount = items.Count(i => i.AllocationStatus == TimesheetConstants.AllocationStatusActive)
+            TotalActiveCount = items.Count(i => i.AllocationStatus == AllocationStatusConstants.Active)
         };
     }
 
@@ -77,7 +81,7 @@ public class AllocationService(
         }
 
         var totalUtilization = items
-            .Where(i => i.AllocationStatus == TimesheetConstants.AllocationStatusActive)
+            .Where(i => i.AllocationStatus == AllocationStatusConstants.Active)
             .Sum(i => i.AllocationPercentage);
 
         return new EmployeeAllocationListResponseDto
@@ -137,7 +141,7 @@ public class AllocationService(
                 AllocationPercentage = request.AllocationPercentage,
                 AllocationStartDate = request.AllocationStartDate,
                 AllocationEndDate = request.AllocationEndDate,
-                AllocationStatus = TimesheetConstants.AllocationStatusActive,
+                AllocationStatus = AllocationStatusConstants.Active,
                 AllocatedByManagerId = managerUserId,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -150,25 +154,26 @@ public class AllocationService(
             employee.UpdatedAt = now;
             await employeeRepository.UpdateAsync(employee, cancellationToken);
 
-            await auditLogRepository.AddAsync(new AuditLog
-            {
-                ActorUserId = managerUserId,
-                EntityName = "PROJECT_ALLOCATIONS",
-                EntityId = allocation.Id,
-                ActionType = "CREATE",
-                NewValues = JsonSerializer.Serialize(new
+            await auditService.LogCreateAsync(
+                managerUserId,
+                AuditEntityConstants.ProjectAllocations,
+                allocation.Id,
+                new
                 {
                     allocation.EmployeeId,
                     allocation.ProjectId,
                     allocation.AllocationPercentage,
                     allocation.AllocationStartDate,
                     allocation.AllocationEndDate
-                }),
-                CreatedAt = now
-            }, cancellationToken);
+                },
+                cancellationToken);
 
             await allocationRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Allocation created. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.ProjectAllocations, allocation.Id, managerUserId);
 
             return new CreateAllocationResponseDto
             {
@@ -195,7 +200,7 @@ public class AllocationService(
         var allocation = await allocationRepository.GetByIdAsync(allocationId, cancellationToken)
             ?? throw new NotFoundAppException("Allocation not found.");
 
-        if (!string.Equals(allocation.AllocationStatus, TimesheetConstants.AllocationStatusActive, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(allocation.AllocationStatus, AllocationStatusConstants.Active, StringComparison.OrdinalIgnoreCase))
             throw new ValidationAppException("Allocation is not active.");
 
         var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken)
@@ -220,7 +225,7 @@ public class AllocationService(
         try
         {
             allocation.AllocationEndDate = today;
-            allocation.AllocationStatus = TimesheetConstants.AllocationStatusEnded;
+            allocation.AllocationStatus = AllocationStatusConstants.Ended;
             allocation.UpdatedAt = now;
             await allocationRepository.UpdateAsync(allocation, cancellationToken);
 
@@ -231,24 +236,25 @@ public class AllocationService(
                 await employeeRepository.UpdateAsync(employee, cancellationToken);
             }
 
-            await auditLogRepository.AddAsync(new AuditLog
-            {
-                ActorUserId = managerUserId,
-                EntityName = "PROJECT_ALLOCATIONS",
-                EntityId = allocation.Id,
-                ActionType = "END",
-                OldValues = JsonSerializer.Serialize(new { allocationStatus = oldStatus }),
-                NewValues = JsonSerializer.Serialize(new
+            await auditService.LogEndAsync(
+                managerUserId,
+                AuditEntityConstants.ProjectAllocations,
+                allocation.Id,
+                new { allocationStatus = oldStatus },
+                new
                 {
                     allocationStatus = allocation.AllocationStatus,
                     allocation.AllocationEndDate,
                     employee.EmploymentStatus
-                }),
-                CreatedAt = now
-            }, cancellationToken);
+                },
+                cancellationToken);
 
             await allocationRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Allocation ended. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.ProjectAllocations, allocation.Id, managerUserId);
 
             return new EndAllocationResponseDto
             {

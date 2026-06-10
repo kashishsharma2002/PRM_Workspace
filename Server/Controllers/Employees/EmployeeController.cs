@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Employees;
 
 namespace Server.Controllers.Employees;
@@ -11,7 +12,7 @@ namespace Server.Controllers.Employees;
 [Route("api/employees")]
 public class EmployeeController(IEmployeeService employeeService) : ControllerBase
 {
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("my-team")]
     public async Task<ActionResult<ApiResponse<TeamDashboardDto>>> GetMyTeam(CancellationToken cancellationToken)
     {
@@ -20,7 +21,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<TeamDashboardDto>.Ok(result, "Team dashboard retrieved."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("my-team/{id:long}")]
     public async Task<ActionResult<ApiResponse<TeamMemberDetailDto>>> GetMyTeamMember(
         long id,
@@ -31,7 +32,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<TeamMemberDetailDto>.Ok(result, "Team member retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<EmployeeListResponseDto>>> GetAllEmployees(
         [FromQuery] string? status,
@@ -42,7 +43,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<EmployeeListResponseDto>.Ok(result, "Employees retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResponse<EmployeeDetailDto>>> GetEmployee(
         long id,
@@ -52,7 +53,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<EmployeeDetailDto>.Ok(result, "Employee retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateEmployee(
         long id,
@@ -63,7 +64,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Employee updated."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}/deactivate")]
     public async Task<ActionResult<ApiResponse<object>>> DeactivateEmployee(
         long id,
@@ -74,7 +75,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Employee deactivated."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPost("{id:long}/skills")]
     public async Task<ActionResult<ApiResponse<object>>> AddSkill(
         long id,
@@ -85,7 +86,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Skill added."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}/skills/{skillId:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateSkillProficiency(
         long id,
@@ -97,7 +98,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Skill proficiency updated."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpDelete("{id:long}/skills/{skillId:long}")]
     public async Task<ActionResult<ApiResponse<object>>> RemoveSkill(
         long id,
@@ -108,7 +109,7 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Skill removed."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}/manager")]
     public async Task<ActionResult<ApiResponse<object>>> AssignManager(
         long id,

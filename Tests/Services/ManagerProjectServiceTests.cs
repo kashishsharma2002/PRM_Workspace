@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Server.Common;
@@ -35,8 +36,8 @@ public class ManagerProjectServiceTests : IDisposable
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
-            new AuditLogRepository(_context),
-            NullLogger<ProjectService>.Instance);
+            TestServiceFactory.CreateAuditService(_context),
+            TestServiceFactory.CreateLogger<ProjectService>());
     }
 
     private (long ankitId, long nehaId, long ankitProjectId, long nehaProjectId) SeedData()

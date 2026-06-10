@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Server.Common;
@@ -30,7 +31,8 @@ public class ProjectServiceTests : IDisposable
         var milestoneRepo = new MilestoneRepository(_context);
         var auditRepo = new AuditLogRepository(_context);
 
-        _userService = new UserService(_context, userRepo, new EmployeeRepository(_context), auditRepo);
+        var auditService = TestServiceFactory.CreateAuditService(_context);
+        _userService = new UserService(_context, userRepo, new EmployeeRepository(_context), auditService, TestServiceFactory.CreateLogger<UserService>());
         _projectService = new ProjectService(
             projectRepo,
             milestoneRepo,
@@ -39,8 +41,8 @@ public class ProjectServiceTests : IDisposable
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
-            auditRepo,
-            NullLogger<ProjectService>.Instance);
+            auditService,
+            TestServiceFactory.CreateLogger<ProjectService>());
     }
 
     private async Task<long> CreateManagerAsync()

@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Timesheets;
 
 namespace Server.Controllers.Timesheets;
 
-[Authorize(Roles = "EMPLOYEE")]
+[Authorize(Roles = RoleConstants.Employee)]
 [ApiController]
 [Route("api/activity-tags")]
 public class ActivityTagController(ITimesheetService timesheetService) : ControllerBase

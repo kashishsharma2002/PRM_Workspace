@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Timesheets;
 
 namespace Server.Controllers.Timesheets;
@@ -11,7 +12,7 @@ namespace Server.Controllers.Timesheets;
 [Route("api/timesheets")]
 public class TimesheetController(ITimesheetService timesheetService) : ControllerBase
 {
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<TimesheetSubmitResponseDto>>> SubmitTimesheet(
         [FromBody] TimesheetSubmitRequestDto request,
@@ -23,7 +24,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         return StatusCode(StatusCodes.Status201Created, ApiResponse<TimesheetSubmitResponseDto>.Ok(result, "Timesheet submitted."));
     }
 
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("my")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<TimesheetHistoryItemDto>>>> GetMyTimesheets(
         CancellationToken cancellationToken)
@@ -33,7 +34,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         return Ok(ApiResponse<IReadOnlyList<TimesheetHistoryItemDto>>.Ok(result, "Timesheets retrieved."));
     }
 
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("my/{id:long}")]
     public async Task<ActionResult<ApiResponse<TimesheetDetailDto>>> GetMyTimesheetDetail(
         long id,
@@ -44,7 +45,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         return Ok(ApiResponse<TimesheetDetailDto>.Ok(result, "Timesheet detail retrieved."));
     }
 
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("week-allocations")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<EmployeeWeekAllocationDto>>>> GetWeekAllocations(
         [FromQuery] DateOnly weekStart,
@@ -55,7 +56,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         return Ok(ApiResponse<IReadOnlyList<EmployeeWeekAllocationDto>>.Ok(result, "Week allocations retrieved."));
     }
 
-    [Authorize(Roles = "EMPLOYEE")]
+    [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("reminder")]
     public async Task<ActionResult<ApiResponse<object>>> GetMissedReminder(CancellationToken cancellationToken)
     {
@@ -69,7 +70,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         }, "Reminder status retrieved."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("team")]
     public async Task<ActionResult<ApiResponse<TeamTimesheetListResponseDto>>> GetTeamTimesheets(
         [FromQuery] DateOnly? week,
@@ -80,7 +81,7 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
         return Ok(ApiResponse<TeamTimesheetListResponseDto>.Ok(result, "Team timesheets retrieved."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResponse<ManagerTimesheetDetailDto>>> GetTimesheetForManager(
         long id,

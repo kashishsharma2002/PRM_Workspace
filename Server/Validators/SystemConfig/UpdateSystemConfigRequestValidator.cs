@@ -1,4 +1,5 @@
 using FluentValidation;
+using Server.Common;
 using Server.Models.DTOs.SystemConfig;
 
 namespace Server.Validators.SystemConfig;
@@ -15,8 +16,10 @@ public class UpdateSystemConfigRequestValidator : AbstractValidator<UpdateSystem
             .WithMessage("At least one setting must be provided.");
 
         RuleFor(x => x.LlmProvider)
-            .Must(p => p is null || p.Equals("Gemini", StringComparison.OrdinalIgnoreCase) || p.Equals("Groq", StringComparison.OrdinalIgnoreCase))
-            .WithMessage("LLM provider must be Gemini or Groq.");
+            .Must(p => p is null
+                || p.Equals(LlmProviders.Gemini, StringComparison.OrdinalIgnoreCase)
+                || p.Equals(LlmProviders.Groq, StringComparison.OrdinalIgnoreCase))
+            .WithMessage($"LLM provider must be {LlmProviders.Gemini} or {LlmProviders.Groq}.");
 
         RuleFor(x => x.SchedulerIntervalHours)
             .GreaterThan(0).When(x => x.SchedulerIntervalHours.HasValue)

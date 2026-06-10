@@ -90,6 +90,6 @@ public static class UpdateProjectScreen
             ConsoleHelper.PrintSuccess("Project updated.");
         }
         catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ConsoleHelper.PrintError(ex.Message); }
+        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 }

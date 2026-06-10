@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Models.DTOs.Projects;
 
 namespace Server.Controllers.Projects;
@@ -11,7 +12,7 @@ namespace Server.Controllers.Projects;
 [Route("api/projects")]
 public class ProjectController(IProjectService projectService) : ControllerBase
 {
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<CreateProjectResponseDto>>> CreateProject(
         [FromBody] CreateProjectRequestDto request,
@@ -23,7 +24,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
             ApiResponse<CreateProjectResponseDto>.Ok(result, "Project created."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<ProjectListResponseDto>>> GetAllProjects(
         CancellationToken cancellationToken)
@@ -32,7 +33,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<ProjectListResponseDto>.Ok(result, "Projects retrieved."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("my")]
     public async Task<ActionResult<ApiResponse<ManagerProjectListResponseDto>>> GetMyProjects(
         CancellationToken cancellationToken)
@@ -42,7 +43,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<ManagerProjectListResponseDto>.Ok(result, "Projects retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet("{id:long}")]
     public async Task<ActionResult<ApiResponse<ProjectDetailDto>>> GetProject(
         long id,
@@ -52,7 +53,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<ProjectDetailDto>.Ok(result, "Project retrieved."));
     }
 
-    [Authorize(Roles = "MANAGER")]
+    [Authorize(Roles = RoleConstants.Manager)]
     [HttpGet("{id:long}/manager")]
     public async Task<ActionResult<ApiResponse<ManagerProjectDetailDto>>> GetManagerProject(
         long id,
@@ -63,7 +64,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<ManagerProjectDetailDto>.Ok(result, "Project detail retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateProject(
         long id,
@@ -74,7 +75,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { }, "Project updated."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpGet("{id:long}/milestones")]
     public async Task<ActionResult<ApiResponse<MilestoneListResponseDto>>> GetMilestones(
         long id,
@@ -84,7 +85,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
         return Ok(ApiResponse<MilestoneListResponseDto>.Ok(result, "Milestones retrieved."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPost("{id:long}/milestones")]
     public async Task<ActionResult<ApiResponse<object>>> AddMilestone(
         long id,
@@ -96,7 +97,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
             ApiResponse<object>.Ok(new { }, "Milestone added."));
     }
 
-    [Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}/milestones/{milestoneId:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateMilestoneStatus(
         long id,

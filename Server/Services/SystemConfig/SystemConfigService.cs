@@ -1,15 +1,17 @@
-using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Audit;
 using Server.Exceptions;
 using Server.Models.DTOs.SystemConfig;
-using Server.Models.Entities;
+using Server.Services.Shared;
 
 namespace Server.Services.SystemConfig;
 
 public class SystemConfigService(
     ISystemConfigRepository systemConfigRepository,
-    IAuditLogRepository auditLogRepository,
-    ConfigEncryptionHelper encryptionHelper) : ISystemConfigService
+    IAuditService auditService,
+    ConfigEncryptionHelper encryptionHelper,
+    ILogger<SystemConfigService> logger) : ISystemConfigService
 {
     private const string MaskedApiKey = "****************************";
 
@@ -53,17 +55,19 @@ public class SystemConfigService(
         if (updatedKeys.Count == 0)
             throw new ValidationAppException("At least one setting must be provided.");
 
-        await auditLogRepository.AddAsync(new AuditLog
-        {
-            ActorUserId = actorUserId,
-            EntityName = "SYSTEM_CONFIGURATIONS",
-            EntityId = 0,
-            ActionType = "UPDATE",
-            NewValues = JsonSerializer.Serialize(new { updatedKeys, llm_api_key = "***REDACTED***" }),
-            CreatedAt = now
-        }, cancellationToken);
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.SystemConfigurations,
+            0,
+            null,
+            new { updatedKeys, llm_api_key = "***REDACTED***" },
+            cancellationToken);
 
         await systemConfigRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "System config updated. {EntityName} by {ActorUserId} keys {UpdatedKeys}",
+            AuditEntityConstants.SystemConfigurations, actorUserId, string.Join(",", updatedKeys));
     }
 
     private async Task UpdateKeyAsync(

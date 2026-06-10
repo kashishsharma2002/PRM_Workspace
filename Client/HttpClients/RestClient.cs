@@ -73,17 +73,17 @@ public class RestClient
                 throw new SessionExpiredException("Session expired. Please log in again.");
             }
 
-            throw new InvalidOperationException(message);
+            throw new ApiClientException(message, unauthorizedEnvelope?.ErrorCode, (int)response.StatusCode);
         }
 
         var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>();
         if (envelope is null)
-            throw new InvalidOperationException("Empty response from server.");
+            throw new ApiClientException("Empty response from server.", null, (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode || !envelope.Success)
         {
             var details = envelope.Details is not null ? string.Join("; ", envelope.Details) : envelope.Error;
-            throw new InvalidOperationException(details ?? "Request failed.");
+            throw new ApiClientException(details ?? "Request failed.", envelope.ErrorCode, (int)response.StatusCode);
         }
 
         return envelope.Data;

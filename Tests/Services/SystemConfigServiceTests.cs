@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.DataProtection;
 using Server.Common;
@@ -27,8 +28,9 @@ public class SystemConfigServiceTests : IDisposable
         var encryption = new ConfigEncryptionHelper(dataProtection);
         _systemConfigService = new SystemConfigService(
             new SystemConfigRepository(_context),
-            new AuditLogRepository(_context),
-            encryption);
+            TestServiceFactory.CreateAuditService(_context),
+            encryption,
+            TestServiceFactory.CreateLogger<SystemConfigService>());
     }
 
     private void SeedConfig()

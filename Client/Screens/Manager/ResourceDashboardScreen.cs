@@ -72,7 +72,7 @@ public static class ResourceDashboardScreen
             }
             catch (Exception ex)
             {
-                ConsoleHelper.PrintError(ex.Message);
+                ErrorDisplayHelper.HandleException(ex);
             }
         }
     }

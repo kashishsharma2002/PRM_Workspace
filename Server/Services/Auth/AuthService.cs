@@ -1,10 +1,15 @@
+using Microsoft.Extensions.Logging;
 using Server.Common;
+using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Auth;
 
 namespace Server.Services.Auth;
 
-public class AuthService(IUserRepository userRepository, IJwtTokenService jwtTokenService) : IAuthService
+public class AuthService(
+    IUserRepository userRepository,
+    IJwtTokenService jwtTokenService,
+    ILogger<AuthService> logger) : IAuthService
 {
     public async Task<LoginResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -13,20 +18,30 @@ public class AuthService(IUserRepository userRepository, IJwtTokenService jwtTok
 
         var user = await userRepository.GetByUsernameAsync(request.Username.Trim(), cancellationToken);
         if (user is null || !user.IsActive)
+        {
+            logger.LogWarning("Failed login attempt for username {Username}", request.Username.Trim());
             throw new UnauthorizedAppException("Invalid username or password.");
+        }
 
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            logger.LogWarning("Failed login attempt for username {Username}", request.Username.Trim());
             throw new UnauthorizedAppException("Invalid username or password.");
+        }
 
         var employee = await userRepository.GetEmployeeByUserIdAsync(user.Id, cancellationToken);
         if (employee is not null && !employee.IsActive)
+        {
+            logger.LogWarning("Failed login attempt for inactive employee user {UserId}", user.Id);
             throw new UnauthorizedAppException("Invalid username or password.");
+        }
 
         user.LastLoginAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
         await userRepository.UpdateAsync(user, cancellationToken);
         await userRepository.SaveChangesAsync(cancellationToken);
 
+        logger.LogInformation("User {UserId} logged in successfully", user.Id);
         return jwtTokenService.CreateToken(user, employee);
     }
 
