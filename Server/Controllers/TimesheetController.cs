@@ -72,18 +72,24 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
 
     [Authorize(Roles = "MANAGER")]
     [HttpGet("team")]
-    public ActionResult<ApiResponse<object>> GetTeamTimesheets([FromQuery] DateOnly? week)
+    public async Task<ActionResult<ApiResponse<TeamTimesheetListResponseDto>>> GetTeamTimesheets(
+        [FromQuery] DateOnly? week,
+        CancellationToken cancellationToken)
     {
-        return StatusCode(StatusCodes.Status501NotImplemented,
-            ApiResponse<object>.Fail("Team timesheets are available in Phase 6."));
+        var managerUserId = GetActorUserId();
+        var result = await timesheetService.GetTeamTimesheetsAsync(managerUserId, week, cancellationToken);
+        return Ok(ApiResponse<TeamTimesheetListResponseDto>.Ok(result, "Team timesheets retrieved."));
     }
 
     [Authorize(Roles = "MANAGER")]
     [HttpGet("{id:long}")]
-    public ActionResult<ApiResponse<object>> GetTimesheetForManager(long id)
+    public async Task<ActionResult<ApiResponse<ManagerTimesheetDetailDto>>> GetTimesheetForManager(
+        long id,
+        CancellationToken cancellationToken)
     {
-        return StatusCode(StatusCodes.Status501NotImplemented,
-            ApiResponse<object>.Fail("Manager timesheet detail is available in Phase 6."));
+        var managerUserId = GetActorUserId();
+        var result = await timesheetService.GetTimesheetForManagerAsync(managerUserId, id, cancellationToken);
+        return Ok(ApiResponse<ManagerTimesheetDetailDto>.Ok(result, "Timesheet detail retrieved."));
     }
 
     private long GetEmployeeId()

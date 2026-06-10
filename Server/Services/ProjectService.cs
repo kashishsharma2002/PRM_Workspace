@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Server.Common;
 using Server.Exceptions;
 using Server.Models.DTOs.Projects;
 using Server.Models.Entities;
@@ -11,6 +12,10 @@ public class ProjectService(
     IProjectRepository projectRepository,
     IMilestoneRepository milestoneRepository,
     IUserRepository userRepository,
+    IAllocationRepository allocationRepository,
+    IEmployeeRepository employeeRepository,
+    ITimesheetRepository timesheetRepository,
+    ISystemConfigRepository systemConfigRepository,
     IAuditLogRepository auditLogRepository) : IProjectService
 {
     public async Task<CreateProjectResponseDto> CreateProjectAsync(
@@ -211,6 +216,122 @@ public class ProjectService(
 
         await milestoneRepository.UpdateAsync(milestone, cancellationToken);
         await projectRepository.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<ManagerProjectListResponseDto> GetMyProjectsAsync(
+        long managerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var projects = await projectRepository.GetByManagerUserIdAsync(managerUserId, cancellationToken);
+        return new ManagerProjectListResponseDto
+        {
+            Projects = projects.Select(p => new ManagerProjectListItemDto
+            {
+                Id = p.Id,
+                ProjectName = p.ProjectName,
+                EndDate = p.EndDate,
+                HealthStatus = p.HealthStatus
+            }).ToList()
+        };
+    }
+
+    public async Task<ManagerProjectDetailDto> GetManagerProjectDetailAsync(
+        long managerUserId,
+        long projectId,
+        CancellationToken cancellationToken = default)
+    {
+        var project = await projectRepository.GetByIdAsync(projectId, cancellationToken)
+            ?? throw new NotFoundAppException("Project not found.");
+
+        if (project.ManagerUserId != managerUserId)
+            throw new NotFoundAppException("Project not found.");
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var milestones = await milestoneRepository.GetByProjectIdAsync(projectId, cancellationToken);
+        var milestoneDtos = milestones.Select(m => new ManagerProjectMilestoneDto
+        {
+            MilestoneTitle = m.MilestoneTitle,
+            DueDate = m.DueDate,
+            MilestoneStatus = m.MilestoneStatus,
+            IsOverdue = m.DueDate < today && m.MilestoneStatus != "DONE"
+        }).ToList();
+
+        var allocations = await allocationRepository.GetActiveByProjectIdAsync(projectId, cancellationToken);
+        var resources = new List<ManagerProjectResourceDto>();
+        foreach (var allocation in allocations)
+        {
+            var employee = await employeeRepository.GetByIdAsync(allocation.EmployeeId, cancellationToken);
+            var user = employee is not null
+                ? await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
+                : null;
+
+            resources.Add(new ManagerProjectResourceDto
+            {
+                EmployeeName = user?.FullName ?? "Unknown",
+                AllocationPercentage = allocation.AllocationPercentage,
+                AllocationStartDate = allocation.AllocationStartDate,
+                AllocationEndDate = allocation.AllocationEndDate
+            });
+        }
+
+        var riskFlags = await BuildRiskFlagsAsync(projectId, milestoneDtos, allocations, cancellationToken);
+
+        return new ManagerProjectDetailDto
+        {
+            Id = project.Id,
+            ProjectCode = project.ProjectCode,
+            ProjectName = project.ProjectName,
+            EndDate = project.EndDate,
+            HealthStatus = project.HealthStatus,
+            Milestones = milestoneDtos,
+            AllocatedResources = resources,
+            RiskFlags = riskFlags
+        };
+    }
+
+    private async Task<List<string>> BuildRiskFlagsAsync(
+        long projectId,
+        IReadOnlyList<ManagerProjectMilestoneDto> milestones,
+        IReadOnlyList<ProjectAllocation> allocations,
+        CancellationToken cancellationToken)
+    {
+        var flags = new List<string>();
+
+        if (milestones.Any(m => m.IsOverdue))
+            flags.Add("OVERDUE_MILESTONE");
+
+        var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
+        var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
+        var employeeIds = allocations.Select(a => a.EmployeeId).Distinct().ToList();
+        var timesheets = await timesheetRepository.GetByEmployeeIdsAndWeekAsync(employeeIds, lastWeek, cancellationToken);
+        var timesheetLookup = timesheets.ToDictionary(t => t.EmployeeId);
+
+        foreach (var allocation in allocations)
+        {
+            if (!timesheetLookup.TryGetValue(allocation.EmployeeId, out var timesheet)
+                || timesheet.Status != TimesheetConstants.StatusSubmitted)
+                continue;
+
+            var lineItems = await timesheetRepository.GetLineItemsByTimesheetIdAsync(timesheet.Id, cancellationToken);
+            var projectHours = lineItems
+                .Where(li => li.ProjectId == projectId)
+                .Sum(li => li.HoursLogged);
+
+            var expectedHours = allocation.AllocationPercentage / 100m * maxWeeklyHours;
+            if (projectHours < expectedHours * 0.5m)
+                flags.Add("LOW_HOURS");
+        }
+
+        return flags.Distinct().ToList();
+    }
+
+    private async Task<decimal> GetMaxWeeklyHoursAsync(CancellationToken cancellationToken)
+    {
+        var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
+        if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
+            return 40m;
+
+        return maxHours;
     }
 
     private static int SumDoneStoryPoints(IReadOnlyList<ProjectMilestone> milestones) =>

@@ -32,7 +32,15 @@ public class ProjectServiceTests : IDisposable
         var auditRepo = new AuditLogRepository(_context);
 
         _userService = new UserService(_context, userRepo, new EmployeeRepository(_context), auditRepo);
-        _projectService = new ProjectService(projectRepo, milestoneRepo, userRepo, auditRepo);
+        _projectService = new ProjectService(
+            projectRepo,
+            milestoneRepo,
+            userRepo,
+            new AllocationRepository(_context),
+            new EmployeeRepository(_context),
+            new TimesheetRepository(_context),
+            new SystemConfigRepository(_context),
+            auditRepo);
     }
 
     private async Task<long> CreateManagerAsync()

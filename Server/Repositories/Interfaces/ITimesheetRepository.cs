@@ -8,6 +8,11 @@ public interface ITimesheetRepository
     Task<Timesheet?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
     Task<Timesheet?> GetByIdForEmployeeAsync(long id, long employeeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Timesheet>> GetByEmployeeAsync(long employeeId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Timesheet>> GetByEmployeeIdsAndWeekAsync(
+        IEnumerable<long> employeeIds,
+        DateOnly weekStart,
+        CancellationToken cancellationToken = default);
+    Task<Timesheet?> GetByIdForEmployeeCheckAsync(long id, CancellationToken cancellationToken = default);
     Task AddAsync(Timesheet timesheet, CancellationToken cancellationToken = default);
     Task AddLineItemAsync(TimesheetLineItem lineItem, CancellationToken cancellationToken = default);
     Task AddLineItemTagAsync(TimesheetLineItemActivityTag tag, CancellationToken cancellationToken = default);

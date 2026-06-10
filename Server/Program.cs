@@ -115,7 +115,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
     service = "PRM.Server",
-    phase = "5"
+    phase = "6"
 }));
 
 app.Run();

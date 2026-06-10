@@ -24,6 +24,23 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             .OrderByDescending(t => t.WeekStartDate)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Timesheet>> GetByEmployeeIdsAndWeekAsync(
+        IEnumerable<long> employeeIds,
+        DateOnly weekStart,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = employeeIds.ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return await context.Timesheets
+            .Where(t => ids.Contains(t.EmployeeId) && t.WeekStartDate == weekStart)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<Timesheet?> GetByIdForEmployeeCheckAsync(long id, CancellationToken cancellationToken = default) =>
+        context.Timesheets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+
     public async Task AddAsync(Timesheet timesheet, CancellationToken cancellationToken = default) =>
         await context.Timesheets.AddAsync(timesheet, cancellationToken);
 
