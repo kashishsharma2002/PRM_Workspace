@@ -1,6 +1,6 @@
-using Client.Helpers;
+﻿using Client.Helpers;
 using Client.HttpClients;
-using Client.Session;
+using Client.Models.Auth;
 
 namespace Client.Screens;
 
@@ -29,13 +29,27 @@ public static class ChangePasswordScreen
 
         try
         {
-            await client.PostAsync<object>("/api/auth/change-password", new ChangePasswordRequest
+            var result = await client.PostAsync<LoginResponse>("/api/auth/change-password", new ChangePasswordRequest
             {
                 CurrentPassword = currentPassword,
                 NewPassword = newPassword
             }, requireAuth: true);
 
-            SessionStore.ForcePasswordChange = false;
+            if (result is null)
+            {
+                ConsoleHelper.PrintError("Password change failed.");
+                return false;
+            }
+
+            SessionStore.ApplyLogin(
+                result.Token,
+                result.Role,
+                result.FullName,
+                result.UserId,
+                result.EmployeeId,
+                result.ManagerId,
+                result.ForcePasswordChange);
+            client.SetToken(result.Token);
             ConsoleHelper.PrintSuccess("Password changed successfully.");
             return true;
         }

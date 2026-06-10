@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Client.Session;
+using Client.Helpers;
+using Client.Models;
 
 namespace Client.HttpClients;
 

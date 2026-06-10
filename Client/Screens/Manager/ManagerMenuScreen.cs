@@ -1,6 +1,5 @@
-using Client.Helpers;
+﻿using Client.Helpers;
 using Client.HttpClients;
-using Client.Session;
 
 namespace Client.Screens.Manager;
 
@@ -13,8 +12,8 @@ public static class ManagerMenuScreen
             ConsoleHelper.PrintHeader("Manager Main Menu");
             Console.WriteLine($"Logged in as: {SessionStore.FullName}");
             ConsoleHelper.PrintDivider();
-            Console.WriteLine("1. Resource Dashboard (Phase 4)");
-            Console.WriteLine("2. Allocate Resource (Phase 4)");
+            Console.WriteLine("1. Resource Dashboard");
+            Console.WriteLine("2. Allocate Resource");
             Console.WriteLine("3. My Projects");
             Console.WriteLine("4. Timesheets");
             Console.WriteLine("5. AI Assistant (Phase 8)");
@@ -28,9 +27,13 @@ public static class ManagerMenuScreen
                 switch (choice)
                 {
                     case "1":
+                        await ResourceDashboardScreen.RunAsync(client);
+                        break;
                     case "2":
+                        await AllocateResourceScreen.RunAsync(client);
+                        break;
                     case "5":
-                        Console.WriteLine("This feature will be available in a later phase.");
+                        Console.WriteLine("AI Assistant will be available in Phase 8.");
                         break;
                     case "3":
                         await MyProjectsScreen.RunAsync(client);

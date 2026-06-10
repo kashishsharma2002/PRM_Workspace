@@ -1,0 +1,17 @@
+global using Server.Repositories.Allocations;
+global using Server.Repositories.Employees;
+global using Server.Repositories.Projects;
+global using Server.Repositories.Scheduler;
+global using Server.Repositories.Shared;
+global using Server.Repositories.SystemConfig;
+global using Server.Repositories.Timesheets;
+global using Server.Repositories.Users;
+global using Server.Services.Allocations;
+global using Server.Services.Auth;
+global using Server.Services.Employees;
+global using Server.Services.Projects;
+global using Server.Services.SystemConfig;
+global using Server.Services.Timesheets;
+global using Server.Services.Users;
+global using Server.Validators.Users;
+global using Server.Validators.Allocations;

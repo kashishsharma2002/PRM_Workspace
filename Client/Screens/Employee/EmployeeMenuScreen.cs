@@ -1,6 +1,5 @@
-using Client.Helpers;
+﻿using Client.Helpers;
 using Client.HttpClients;
-using Client.Session;
 
 namespace Client.Screens.Employee;
 

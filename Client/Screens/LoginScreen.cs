@@ -1,6 +1,5 @@
-using Client.Helpers;
+﻿using Client.Helpers;
 using Client.HttpClients;
-using Client.Session;
 
 namespace Client.Screens;
 
@@ -8,7 +7,7 @@ public static class LoginScreen
 {
     public static async Task<bool> RunAsync(RestClient client)
     {
-        ConsoleHelper.PrintHeader("PRM — Login");
+        ConsoleHelper.PrintHeader("PRM Login");
 
         Console.Write("Username: ");
         var username = Console.ReadLine()?.Trim() ?? string.Empty;

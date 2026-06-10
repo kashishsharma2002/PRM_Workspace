@@ -1,10 +1,9 @@
-using Client.Helpers;
+﻿using Client.Helpers;
 using Client.HttpClients;
 using Client.Screens;
 using Client.Screens.Admin;
 using Client.Screens.Employee;
 using Client.Screens.Manager;
-using Client.Session;
 
 namespace Client;
 

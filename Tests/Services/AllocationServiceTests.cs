@@ -1,0 +1,262 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Server.Common;
+using Server.Data;
+using Server.Exceptions;
+using Server.Models.DTOs.Allocations;
+using Server.Models.Entities;
+
+namespace Tests;
+
+public class AllocationServiceTests : IDisposable
+{
+    private readonly PrmDbContext _context;
+    private readonly AllocationService _allocationService;
+    private readonly long _managerUserId;
+    private readonly long _employeeId;
+    private readonly long _projectId;
+
+    public AllocationServiceTests()
+    {
+        var options = new DbContextOptionsBuilder<PrmDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        _context = new PrmDbContext(options);
+        (_managerUserId, _employeeId, _projectId) = SeedData();
+
+        _allocationService = new AllocationService(
+            _context,
+            new AllocationRepository(_context),
+            new EmployeeRepository(_context),
+            new UserRepository(_context),
+            new ProjectRepository(_context),
+            new AuditLogRepository(_context));
+    }
+
+    private (long ManagerUserId, long EmployeeId, long ProjectId) SeedData()
+    {
+        var now = DateTime.UtcNow;
+        var manager = new User
+        {
+            Username = "ankit.shah",
+            Email = "ankit@techserve.com",
+            FullName = "Ankit Shah",
+            PasswordHash = "hash",
+            Role = "MANAGER",
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Users.Add(manager);
+
+        var user = new User
+        {
+            Username = "ravi.kumar",
+            Email = "ravi@techserve.com",
+            FullName = "Ravi Kumar",
+            PasswordHash = "hash",
+            Role = "EMPLOYEE",
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Users.Add(user);
+        _context.SaveChanges();
+
+        var employee = new Employee
+        {
+            UserId = user.Id,
+            ManagerId = manager.Id,
+            EmployeeCode = "EMP-000001",
+            EmploymentStatus = AllocationConstants.EmploymentStatusBench,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Employees.Add(employee);
+
+        var project = new Project
+        {
+            ProjectCode = "PRJ-000201",
+            ProjectName = "Alpha Portal",
+            StartDate = new DateOnly(2026, 1, 1),
+            EndDate = new DateOnly(2026, 12, 31),
+            ProjectStatus = "ACTIVE",
+            ManagerUserId = manager.Id,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Projects.Add(project);
+        _context.SaveChanges();
+
+        _context.ProjectAllocations.Add(new ProjectAllocation
+        {
+            EmployeeId = employee.Id,
+            ProjectId = project.Id,
+            AllocationPercentage = 50,
+            AllocationStartDate = new DateOnly(2026, 3, 1),
+            AllocationEndDate = new DateOnly(2026, 6, 30),
+            AllocationStatus = TimesheetConstants.AllocationStatusActive,
+            AllocatedByManagerId = manager.Id,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        _context.SaveChanges();
+
+        return (manager.Id, employee.Id, project.Id);
+    }
+
+    [Fact]
+    public async Task GetAllAllocationsAsync_ReturnsJoinedNames()
+    {
+        var result = await _allocationService.GetAllAllocationsAsync(null, null, null);
+
+        Assert.Single(result.Allocations);
+        Assert.Equal("Ravi Kumar", result.Allocations[0].EmployeeName);
+        Assert.Equal("Alpha Portal", result.Allocations[0].ProjectName);
+        Assert.Equal(1, result.TotalActiveCount);
+    }
+
+    [Fact]
+    public async Task CreateAllocationAsync_Success_SetsEmployeeAllocated()
+    {
+        var now = DateTime.UtcNow;
+        var benchUser = new User
+        {
+            Username = "priya.sharma",
+            Email = "priya@techserve.com",
+            FullName = "Priya Sharma",
+            PasswordHash = "hash",
+            Role = "EMPLOYEE",
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Users.Add(benchUser);
+        await _context.SaveChangesAsync();
+
+        var benchEmployee = new Employee
+        {
+            UserId = benchUser.Id,
+            ManagerId = _managerUserId,
+            EmployeeCode = "EMP-000002",
+            EmploymentStatus = AllocationConstants.EmploymentStatusBench,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.Employees.Add(benchEmployee);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateAllocationRequestDto
+        {
+            EmployeeId = benchEmployee.Id,
+            ProjectId = _projectId,
+            AllocationPercentage = 30,
+            AllocationStartDate = new DateOnly(2026, 7, 1),
+            AllocationEndDate = new DateOnly(2026, 9, 30)
+        };
+
+        var result = await _allocationService.CreateAllocationAsync(_managerUserId, request);
+
+        Assert.True(result.AllocationId > 0);
+        Assert.Equal(AllocationConstants.EmploymentStatusAllocated, result.EmploymentStatus);
+
+        var employee = await _context.Employees.FindAsync(benchEmployee.Id);
+        Assert.Equal(AllocationConstants.EmploymentStatusAllocated, employee!.EmploymentStatus);
+    }
+
+    [Fact]
+    public async Task CreateAllocationAsync_OverAllocation_Throws()
+    {
+        var request = new CreateAllocationRequestDto
+        {
+            EmployeeId = _employeeId,
+            ProjectId = _projectId,
+            AllocationPercentage = 60,
+            AllocationStartDate = new DateOnly(2026, 3, 1),
+            AllocationEndDate = new DateOnly(2026, 6, 30)
+        };
+
+        var ex = await Assert.ThrowsAsync<ValidationAppException>(
+            () => _allocationService.CreateAllocationAsync(_managerUserId, request));
+
+        Assert.Contains("110%", ex.Message);
+        Assert.Contains("Maximum is 100%", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAllocationAsync_NotManagerTeam_Throws()
+    {
+        var otherManager = new User
+        {
+            Username = "other.mgr",
+            Email = "other@techserve.com",
+            FullName = "Other Manager",
+            PasswordHash = "hash",
+            Role = "MANAGER",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(otherManager);
+        await _context.SaveChangesAsync();
+
+        var request = new CreateAllocationRequestDto
+        {
+            EmployeeId = _employeeId,
+            ProjectId = _projectId,
+            AllocationPercentage = 20,
+            AllocationStartDate = new DateOnly(2026, 7, 1),
+            AllocationEndDate = new DateOnly(2026, 8, 31)
+        };
+
+        await Assert.ThrowsAsync<ForbiddenAppException>(
+            () => _allocationService.CreateAllocationAsync(otherManager.Id, request));
+    }
+
+    [Fact]
+    public async Task EndAllocationAsync_SetsBenchWhenNoOtherActive()
+    {
+        var allocation = await _context.ProjectAllocations.FirstAsync();
+        var result = await _allocationService.EndAllocationAsync(_managerUserId, allocation.Id);
+
+        var endedAllocation = await _context.ProjectAllocations.FindAsync(allocation.Id);
+        Assert.Equal(TimesheetConstants.AllocationStatusEnded, endedAllocation!.AllocationStatus);
+        Assert.Equal(AllocationConstants.EmploymentStatusBench, result.EmploymentStatus);
+
+        var employee = await _context.Employees.FindAsync(_employeeId);
+        Assert.Equal(AllocationConstants.EmploymentStatusBench, employee!.EmploymentStatus);
+    }
+
+    [Fact]
+    public async Task EndAllocationAsync_NotProjectOwner_Throws()
+    {
+        var otherManager = new User
+        {
+            Username = "other.mgr2",
+            Email = "other2@techserve.com",
+            FullName = "Other Manager 2",
+            PasswordHash = "hash",
+            Role = "MANAGER",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(otherManager);
+        await _context.SaveChangesAsync();
+
+        var allocation = await _context.ProjectAllocations.FirstAsync();
+
+        await Assert.ThrowsAsync<ForbiddenAppException>(
+            () => _allocationService.EndAllocationAsync(otherManager.Id, allocation.Id));
+    }
+
+    public void Dispose()
+    {
+        _context.Dispose();
+    }
+}

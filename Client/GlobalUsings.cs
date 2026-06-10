@@ -1,0 +1,9 @@
+global using Client.Models;
+global using Client.Models.Allocations;
+global using Client.Models.Auth;
+global using Client.Models.Employees;
+global using Client.Models.ManagerProjects;
+global using Client.Models.Projects;
+global using Client.Models.SystemConfig;
+global using Client.Models.Timesheets;
+global using Client.Models.Users;

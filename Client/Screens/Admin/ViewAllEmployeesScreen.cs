@@ -37,13 +37,16 @@ public static class ViewAllEmployeesScreen
                 return;
             }
 
-            Console.WriteLine($"{"ID",-6}{"Name",-20}{"Department",-14}{"Status"}");
+            Console.WriteLine($"{"S. No",-6}{"Emp ID",-8}{"User ID",-8}{"Name",-18}{"Department",-12}{"Status"}");
             ConsoleHelper.PrintDivider();
 
+            var serialNo = 0;
             foreach (var emp in list.Employees)
             {
+                serialNo++;
                 var status = emp.IsActive ? emp.EmploymentStatus : "Inactive";
-                Console.WriteLine($"{emp.Id,-6}{emp.FullName,-20}{emp.Department ?? "-",-14}{status}");
+                Console.WriteLine(
+                    $"{serialNo,-6}{emp.Id,-8}{emp.UserId,-8}{emp.FullName,-18}{emp.Department ?? "-",-12}{status}");
             }
 
             ConsoleHelper.PrintDivider();

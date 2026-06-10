@@ -6,15 +6,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Server.AI;
 using Server.Common;
 using Server.Data;
 using Server.Middleware;
-using Server.Repositories;
-using Server.Repositories.Interfaces;
+using Server.Scheduler;
 using Server.Seed;
-using Server.Services;
-using Server.Services.Interfaces;
-using Server.Validators;
+using Server.Validators.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,10 +38,16 @@ builder.Services.AddScoped<ITimesheetService, TimesheetService>();
 builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
 builder.Services.AddScoped<IActivityTagRepository, ActivityTagRepository>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddScoped<ISchedulerJobLogRepository, SchedulerJobLogRepository>();
+builder.Services.AddHostedService<BackgroundScheduler>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddDataProtection();
 builder.Services.AddSingleton<ConfigEncryptionHelper>();
+builder.Services.AddScoped<IAiIntegrationService, AiIntegrationService>();
+builder.Services.AddSingleton<GeminiClient>();
+builder.Services.AddSingleton<GroqClient>();
+builder.Services.AddSingleton<LlmClientFactory>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
     ?? throw new InvalidOperationException("JwtSettings configuration is missing.");
@@ -85,7 +89,7 @@ builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerConfiguration();
 
 var app = builder.Build();
 
@@ -100,7 +104,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options => options.EnablePersistAuthorization());
 }
 
 if (!app.Environment.IsDevelopment())
@@ -115,7 +119,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
     service = "PRM.Server",
-    phase = "6"
+    phase = "7"
 }));
 
 app.Run();

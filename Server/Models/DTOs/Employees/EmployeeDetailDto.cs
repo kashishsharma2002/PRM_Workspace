@@ -14,19 +14,3 @@ public class EmployeeDetailDto
     public IReadOnlyList<EmployeeSkillDto> Skills { get; set; } = [];
     public IReadOnlyList<ActiveAllocationDto> ActiveAllocations { get; set; } = [];
 }
-
-public class EmployeeSkillDto
-{
-    public long SkillId { get; set; }
-    public string SkillName { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public string ProficiencyLevel { get; set; } = string.Empty;
-}
-
-public class ActiveAllocationDto
-{
-    public long AllocationId { get; set; }
-    public string ProjectName { get; set; } = string.Empty;
-    public decimal AllocationPercentage { get; set; }
-    public DateOnly AllocationEndDate { get; set; }
-}

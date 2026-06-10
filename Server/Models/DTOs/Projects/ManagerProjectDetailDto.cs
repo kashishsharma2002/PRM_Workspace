@@ -11,19 +11,3 @@ public class ManagerProjectDetailDto
     public List<ManagerProjectResourceDto> AllocatedResources { get; set; } = [];
     public List<string> RiskFlags { get; set; } = [];
 }
-
-public class ManagerProjectMilestoneDto
-{
-    public string MilestoneTitle { get; set; } = string.Empty;
-    public DateOnly DueDate { get; set; }
-    public string MilestoneStatus { get; set; } = string.Empty;
-    public bool IsOverdue { get; set; }
-}
-
-public class ManagerProjectResourceDto
-{
-    public string EmployeeName { get; set; } = string.Empty;
-    public decimal AllocationPercentage { get; set; }
-    public DateOnly AllocationStartDate { get; set; }
-    public DateOnly AllocationEndDate { get; set; }
-}
