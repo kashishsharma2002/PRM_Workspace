@@ -3,6 +3,7 @@ using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Models.Entities;
 
@@ -43,8 +44,11 @@ public class SchedulerMissedTimesheetTests : IDisposable
 
     private (long missingId, long submittedId) SeedData()
     {
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
         var now = DateTime.UtcNow;
         var weekEnd = WeekDateHelper.GetWeekEnd(_lastWeek);
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
+        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
 
         var manager = new User
         {
@@ -52,7 +56,6 @@ public class SchedulerMissedTimesheetTests : IDisposable
             Email = "ankit@techserve.com",
             FullName = "Ankit Shah",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -65,7 +68,6 @@ public class SchedulerMissedTimesheetTests : IDisposable
             Email = "ravi@techserve.com",
             FullName = "Ravi Kumar",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -76,7 +78,6 @@ public class SchedulerMissedTimesheetTests : IDisposable
             Email = "priya@techserve.com",
             FullName = "Priya Singh",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -84,29 +85,38 @@ public class SchedulerMissedTimesheetTests : IDisposable
         _context.Users.AddRange(raviUser, priyaUser);
         _context.SaveChanges();
 
-        var ravi = new Employee
+        _context.UserRoles.AddRange(
+            new UserRole { UserId = manager.Id, RoleId = managerRole.Id, AssignedAt = now },
+            new UserRole { UserId = raviUser.Id, RoleId = employeeRole.Id, AssignedAt = now },
+            new UserRole { UserId = priyaUser.Id, RoleId = employeeRole.Id, AssignedAt = now });
+
+        var managerProfile = new ResourceProfile
+        {
+            UserId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.ResourceProfiles.Add(managerProfile);
+        _context.SaveChanges();
+
+        var ravi = new ResourceProfile
         {
             UserId = raviUser.Id,
-            EmployeeCode = "EMP-000001",
-            Designation = "Developer",
-            Department = "Engineering",
-            EmploymentStatus = "ACTIVE",
             ManagerId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Allocated,
             CreatedAt = now,
             UpdatedAt = now
         };
-        var priya = new Employee
+        var priya = new ResourceProfile
         {
             UserId = priyaUser.Id,
-            EmployeeCode = "EMP-000002",
-            Designation = "Developer",
-            Department = "Engineering",
-            EmploymentStatus = "ACTIVE",
             ManagerId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Allocated,
             CreatedAt = now,
             UpdatedAt = now
         };
-        _context.Employees.AddRange(ravi, priya);
+        _context.ResourceProfiles.AddRange(ravi, priya);
         _context.SaveChanges();
 
         var project = new Project
@@ -128,25 +138,25 @@ public class SchedulerMissedTimesheetTests : IDisposable
         _context.ProjectAllocations.AddRange(
             new ProjectAllocation
             {
-                EmployeeId = ravi.Id,
+                ResourceProfileId = ravi.Id,
                 ProjectId = project.Id,
                 AllocationPercentage = 50m,
                 AllocationStartDate = _lastWeek.AddMonths(-1),
                 AllocationEndDate = weekEnd.AddMonths(3),
                 AllocationStatus = "ACTIVE",
-                AllocatedByManagerId = manager.Id,
+                AllocatedByUserId = manager.Id,
                 CreatedAt = now,
                 UpdatedAt = now
             },
             new ProjectAllocation
             {
-                EmployeeId = priya.Id,
+                ResourceProfileId = priya.Id,
                 ProjectId = project.Id,
                 AllocationPercentage = 50m,
                 AllocationStartDate = _lastWeek.AddMonths(-1),
                 AllocationEndDate = weekEnd.AddMonths(3),
                 AllocationStatus = "ACTIVE",
-                AllocatedByManagerId = manager.Id,
+                AllocatedByUserId = manager.Id,
                 CreatedAt = now,
                 UpdatedAt = now
             });
@@ -154,7 +164,7 @@ public class SchedulerMissedTimesheetTests : IDisposable
 
         _context.Timesheets.Add(new Timesheet
         {
-            EmployeeId = priya.Id,
+            ResourceProfileId = priya.Id,
             WeekStartDate = _lastWeek,
             Status = TimesheetConstants.StatusSubmitted,
             TotalHours = 20m,
@@ -175,7 +185,7 @@ public class SchedulerMissedTimesheetTests : IDisposable
         Assert.Equal(1, created);
 
         var missed = _context.Timesheets.Single(t =>
-            t.EmployeeId == _employeeWithAllocationId && t.WeekStartDate == _lastWeek);
+            t.ResourceProfileId == _employeeWithAllocationId && t.WeekStartDate == _lastWeek);
         Assert.Equal(TimesheetConstants.StatusMissed, missed.Status);
         Assert.Equal(0m, missed.TotalHours);
     }
@@ -188,7 +198,7 @@ public class SchedulerMissedTimesheetTests : IDisposable
 
         Assert.Equal(0, secondRun);
         Assert.Single(_context.Timesheets.Where(t =>
-            t.EmployeeId == _employeeWithAllocationId && t.WeekStartDate == _lastWeek));
+            t.ResourceProfileId == _employeeWithAllocationId && t.WeekStartDate == _lastWeek));
     }
 
     [Fact]
@@ -197,7 +207,7 @@ public class SchedulerMissedTimesheetTests : IDisposable
         await _timesheetService.MarkMissedTimesheetsAsync();
 
         var submitted = _context.Timesheets.Single(t =>
-            t.EmployeeId == _employeeWithSubmissionId && t.WeekStartDate == _lastWeek);
+            t.ResourceProfileId == _employeeWithSubmissionId && t.WeekStartDate == _lastWeek);
         Assert.Equal(TimesheetConstants.StatusSubmitted, submitted.Status);
     }
 

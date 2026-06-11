@@ -13,12 +13,57 @@ public static class DatabaseSeeder
     private const string AdminUsername = "admin";
     private const string AdminEmail = "admin@techserve.com";
     private const string AdminPassword = "Admin@1234";
+    private const string DefaultPassword = "Welcome1";
 
     public static async Task SeedAsync(PrmDbContext context, CancellationToken cancellationToken = default)
     {
+        await SeedRolesAsync(context, cancellationToken);
         await SeedAdminAsync(context, cancellationToken);
+        await SeedHealthThresholdConfigAsync(context, cancellationToken);
         await SeedSampleUsersAsync(context, cancellationToken);
         await SeedSampleProjectsAsync(context, cancellationToken);
+    }
+
+    private static async Task SeedHealthThresholdConfigAsync(PrmDbContext context, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var entries = new (string Key, string Value, string Description)[]
+        {
+            (ConfigKeys.HealthLowHoursThreshold, HealthThresholdDefaults.LowHoursRatio.ToString("0.##"),
+                "Ratio of expected hours below which LOW_HOURS flag is raised (0.01 to 1)"),
+            (ConfigKeys.HealthApproachingDeadlineDays, HealthThresholdDefaults.ApproachingDeadlineDays.ToString(),
+                "Days before project end date to flag APPROACHING_DEADLINE")
+        };
+
+        foreach (var (key, value, description) in entries)
+        {
+            if (await context.SystemConfigurations.AnyAsync(c => c.ConfigKey == key, cancellationToken))
+                continue;
+
+            context.SystemConfigurations.Add(new SystemConfiguration
+            {
+                ConfigKey = key,
+                ConfigValue = value,
+                Description = description,
+                UpdatedAt = now
+            });
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedRolesAsync(PrmDbContext context, CancellationToken cancellationToken)
+    {
+        if (await context.Roles.AnyAsync(cancellationToken))
+            return;
+
+        var now = DateTime.UtcNow;
+        context.Roles.AddRange(
+            new Role { RoleName = RoleConstants.Admin, CreatedAt = now },
+            new Role { RoleName = RoleConstants.Manager, CreatedAt = now },
+            new Role { RoleName = RoleConstants.Employee, CreatedAt = now });
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task SeedAdminAsync(PrmDbContext context, CancellationToken cancellationToken)
@@ -30,18 +75,30 @@ public static class DatabaseSeeder
         try
         {
             var now = DateTime.UtcNow;
+            var adminRole = await context.Roles.FirstAsync(r => r.RoleName == RoleConstants.Admin, cancellationToken);
 
-            context.Users.Add(new User
+            var user = new User
             {
                 Username = AdminUsername,
                 Email = AdminEmail,
                 FullName = "System Administrator",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(AdminPassword),
-                Role = RoleConstants.Admin,
-                ForcePasswordChange = true,
+                Department = DepartmentConstants.HrOps,
+                Designation = DesignationConstants.SystemAdministrator,
+                IsTemporaryPassword = true,
                 IsActive = true,
                 CreatedAt = now,
                 UpdatedAt = now
+            };
+
+            context.Users.Add(user);
+            await context.SaveChangesAsync(cancellationToken);
+
+            context.UserRoles.Add(new UserRole
+            {
+                UserId = user.Id,
+                RoleId = adminRole.Id,
+                AssignedAt = now
             });
 
             await context.SaveChangesAsync(cancellationToken);
@@ -60,6 +117,9 @@ public static class DatabaseSeeder
             return;
 
         var now = DateTime.UtcNow;
+        var managerRole = await context.Roles.FirstAsync(r => r.RoleName == RoleConstants.Manager, cancellationToken);
+        var employeeRole = await context.Roles.FirstAsync(r => r.RoleName == RoleConstants.Employee, cancellationToken);
+
         var managers = new[]
         {
             ("ankit.shah", "ankit.shah@techserve.com", "Ankit Shah"),
@@ -69,33 +129,48 @@ public static class DatabaseSeeder
         var managerUserIds = new List<long>();
         foreach (var (username, email, fullName) in managers)
         {
-            var user = CreateUser(username, email, fullName, RoleConstants.Manager, now);
+            var user = CreateUser(
+                username, email, fullName,
+                DepartmentConstants.Management,
+                DesignationConstants.DeliveryManager,
+                now);
             context.Users.Add(user);
             await context.SaveChangesAsync(cancellationToken);
 
-            var employee = CreateEmployee(user.Id, null, $"EMP-{user.Id:D6}", "Management", "Delivery Manager", now);
-            context.Employees.Add(employee);
+            context.UserRoles.Add(new UserRole
+            {
+                UserId = user.Id,
+                RoleId = managerRole.Id,
+                AssignedAt = now
+            });
+
             await context.SaveChangesAsync(cancellationToken);
             managerUserIds.Add(user.Id);
         }
 
         var employees = new[]
         {
-            ("ravi.kumar", "ravi.kumar@techserve.com", "Ravi Kumar", "Backend", AllocationConstants.EmploymentStatusAllocated, managerUserIds[0]),
-            ("priya.sharma", "priya.sharma@techserve.com", "Priya Sharma", "Frontend", AllocationConstants.EmploymentStatusBench, managerUserIds[0]),
-            ("anil.mehta", "anil.mehta@techserve.com", "Anil Mehta", "DevOps", AllocationConstants.EmploymentStatusBench, managerUserIds[1]),
-            ("sara.khan", "sara.khan@techserve.com", "Sara Khan", "QA", AllocationConstants.EmploymentStatusBench, managerUserIds[1])
+            ("ravi.kumar", "ravi.kumar@techserve.com", "Ravi Kumar", DepartmentConstants.SoftwareDevelopment, DesignationConstants.SeniorEngineer, ResourceStatusConstants.Allocated, managerUserIds[0]),
+            ("priya.sharma", "priya.sharma@techserve.com", "Priya Sharma", DepartmentConstants.SoftwareDevelopment, DesignationConstants.Jse, ResourceStatusConstants.Bench, managerUserIds[0]),
+            ("anil.mehta", "anil.mehta@techserve.com", "Anil Mehta", DepartmentConstants.DevOps, DesignationConstants.SeniorEngineer, ResourceStatusConstants.Bench, managerUserIds[1]),
+            ("sara.khan", "sara.khan@techserve.com", "Sara Khan", DepartmentConstants.Qa, DesignationConstants.SoftwareEngineer, ResourceStatusConstants.Bench, managerUserIds[1])
         };
 
-        foreach (var (username, email, fullName, department, status, managerId) in employees)
+        foreach (var (username, email, fullName, department, designation, status, managerUserId) in employees)
         {
-            var user = CreateUser(username, email, fullName, RoleConstants.Employee, now);
+            var user = CreateUser(username, email, fullName, department, designation, now);
             context.Users.Add(user);
             await context.SaveChangesAsync(cancellationToken);
 
-            var employee = CreateEmployee(user.Id, managerId, $"EMP-{user.Id:D6}", department, "Consultant", now);
-            employee.EmploymentStatus = status;
-            context.Employees.Add(employee);
+            context.UserRoles.Add(new UserRole
+            {
+                UserId = user.Id,
+                RoleId = employeeRole.Id,
+                AssignedAt = now
+            });
+
+            var profile = CreateResourceProfile(user.Id, managerUserId, status, now);
+            context.ResourceProfiles.Add(profile);
             await context.SaveChangesAsync(cancellationToken);
         }
 
@@ -129,8 +204,8 @@ public static class DatabaseSeeder
 
         await context.SaveChangesAsync(cancellationToken);
 
-        var ravi = await context.Employees
-            .Join(context.Users, e => e.UserId, u => u.Id, (e, u) => new { e, u })
+        var ravi = await context.ResourceProfiles
+            .Join(context.Users, r => r.UserId, u => u.Id, (r, u) => new { r, u })
             .FirstOrDefaultAsync(x => x.u.Username == "ravi.kumar", cancellationToken);
 
         if (ravi is null) return;
@@ -138,9 +213,9 @@ public static class DatabaseSeeder
         var java = await context.Skills.FirstAsync(s => s.SkillName == "Java", cancellationToken);
         var spring = await context.Skills.FirstAsync(s => s.SkillName == "Spring Boot", cancellationToken);
 
-        context.EmployeeSkills.AddRange(
-            new EmployeeSkill { EmployeeId = ravi.e.Id, SkillId = java.Id, ProficiencyLevel = "INTERMEDIATE", CreatedAt = now },
-            new EmployeeSkill { EmployeeId = ravi.e.Id, SkillId = spring.Id, ProficiencyLevel = "ADVANCED", CreatedAt = now });
+        context.UserSkills.AddRange(
+            new UserSkill { UserId = ravi.u.Id, SkillId = java.Id, ProficiencyLevel = "INTERMEDIATE", CreatedAt = now },
+            new UserSkill { UserId = ravi.u.Id, SkillId = spring.Id, ProficiencyLevel = "ADVANCED", CreatedAt = now });
 
         await context.SaveChangesAsync(cancellationToken);
     }
@@ -203,8 +278,8 @@ public static class DatabaseSeeder
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        var ravi = await context.Employees
-            .Join(context.Users, e => e.UserId, u => u.Id, (e, u) => new { e, u })
+        var ravi = await context.ResourceProfiles
+            .Join(context.Users, r => r.UserId, u => u.Id, (r, u) => new { r, u })
             .FirstOrDefaultAsync(x => x.u.Username == "ravi.kumar", cancellationToken);
 
         if (ravi is not null && projectIds.Count >= 2)
@@ -212,25 +287,25 @@ public static class DatabaseSeeder
             context.ProjectAllocations.AddRange(
                 new ProjectAllocation
                 {
-                    EmployeeId = ravi.e.Id,
+                    ResourceProfileId = ravi.r.Id,
                     ProjectId = projectIds[0],
                     AllocationPercentage = 50,
                     AllocationStartDate = new DateOnly(2026, 3, 1),
                     AllocationEndDate = new DateOnly(2026, 6, 30),
                     AllocationStatus = AllocationStatusConstants.Active,
-                    AllocatedByManagerId = ankit.Id,
+                    AllocatedByUserId = ankit.Id,
                     CreatedAt = now,
                     UpdatedAt = now
                 },
                 new ProjectAllocation
                 {
-                    EmployeeId = ravi.e.Id,
+                    ResourceProfileId = ravi.r.Id,
                     ProjectId = projectIds[1],
                     AllocationPercentage = 50,
                     AllocationStartDate = new DateOnly(2026, 4, 1),
                     AllocationEndDate = new DateOnly(2026, 7, 31),
                     AllocationStatus = AllocationStatusConstants.Active,
-                    AllocatedByManagerId = ankit.Id,
+                    AllocatedByUserId = ankit.Id,
                     CreatedAt = now,
                     UpdatedAt = now
                 });
@@ -239,36 +314,37 @@ public static class DatabaseSeeder
         }
     }
 
-    private static User CreateUser(string username, string email, string fullName, string role, DateTime now) =>
-        new()
-        {
-            Username = username,
-            Email = email,
-            FullName = fullName,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Welcome1"),
-            Role = role,
-            ForcePasswordChange = true,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-    private static Employee CreateEmployee(
-        long userId,
-        long? managerId,
-        string employeeCode,
+    private static User CreateUser(
+        string username,
+        string email,
+        string fullName,
         string department,
         string designation,
         DateTime now) =>
         new()
         {
-            UserId = userId,
-            ManagerId = managerId,
-            EmployeeCode = employeeCode,
+            Username = username,
+            Email = email,
+            FullName = fullName,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword),
             Department = department,
             Designation = designation,
-            EmploymentStatus = "BENCH",
+            IsTemporaryPassword = true,
             IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+    private static ResourceProfile CreateResourceProfile(
+        long userId,
+        long? managerUserId,
+        string resourceStatus,
+        DateTime now) =>
+        new()
+        {
+            UserId = userId,
+            ManagerId = managerUserId,
+            ResourceStatus = resourceStatus,
             CreatedAt = now,
             UpdatedAt = now
         };

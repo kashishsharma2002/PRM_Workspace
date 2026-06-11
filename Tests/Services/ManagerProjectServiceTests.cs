@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging.Abstractions;
-using Server.Common;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.Entities;
@@ -32,17 +31,21 @@ public class ManagerProjectServiceTests : IDisposable
             new ProjectRepository(_context),
             new MilestoneRepository(_context),
             new UserRepository(_context),
+            TestServiceFactory.CreateRoleRepository(_context),
             new AllocationRepository(_context),
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
+            TestServiceFactory.CreateHealthThresholdProvider(_context),
             TestServiceFactory.CreateAuditService(_context),
             TestServiceFactory.CreateLogger<ProjectService>());
     }
 
     private (long ankitId, long nehaId, long ankitProjectId, long nehaProjectId) SeedData()
     {
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
         var now = DateTime.UtcNow;
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
 
         var ankit = new User
         {
@@ -50,7 +53,6 @@ public class ManagerProjectServiceTests : IDisposable
             Email = "ankit@techserve.com",
             FullName = "Ankit Shah",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -61,13 +63,16 @@ public class ManagerProjectServiceTests : IDisposable
             Email = "neha@techserve.com",
             FullName = "Neha Joshi",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
         };
         _context.Users.AddRange(ankit, neha);
         _context.SaveChanges();
+
+        _context.UserRoles.AddRange(
+            new UserRole { UserId = ankit.Id, RoleId = managerRole.Id, AssignedAt = now },
+            new UserRole { UserId = neha.Id, RoleId = managerRole.Id, AssignedAt = now });
 
         var alpha = new Project
         {

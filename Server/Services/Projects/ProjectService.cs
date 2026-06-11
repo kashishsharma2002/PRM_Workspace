@@ -4,6 +4,7 @@ using Server.Common.Audit;
 using Server.Common.Errors;
 using Server.Common.Projects;
 using Server.Common.Roles;
+using Server.Repositories.Roles;
 using Server.Common.Timesheets;
 using Server.Exceptions;
 using Server.Models.DTOs.Projects;
@@ -11,6 +12,7 @@ using Server.Models.DTOs.Scheduler;
 using Server.Models.Entities;
 using Server.Scheduler;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 
 namespace Server.Services.Projects;
 
@@ -18,10 +20,12 @@ public class ProjectService(
     IProjectRepository projectRepository,
     IMilestoneRepository milestoneRepository,
     IUserRepository userRepository,
+    IRoleRepository roleRepository,
     IAllocationRepository allocationRepository,
     IEmployeeRepository employeeRepository,
     ITimesheetRepository timesheetRepository,
     ISystemConfigRepository systemConfigRepository,
+    IHealthThresholdProvider healthThresholdProvider,
     IAuditService auditService,
     ILogger<ProjectService> logger) : IProjectService
 {
@@ -97,6 +101,7 @@ public class ProjectService(
                 ManagerName = managers.TryGetValue(project.ManagerUserId, out var manager) ? manager.FullName : string.Empty,
                 EndDate = project.EndDate,
                 ProjectStatus = project.ProjectStatus,
+                HealthStatus = project.HealthStatus,
                 StoryPointsDone = SumDoneStoryPoints(milestones),
                 TotalStoryPoints = project.TotalStoryPoints
             });
@@ -151,6 +156,36 @@ public class ProjectService(
 
         await projectRepository.UpdateAsync(project, cancellationToken);
         await projectRepository.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ArchiveProjectAsync(
+        long actorUserId,
+        long projectId,
+        CancellationToken cancellationToken = default)
+    {
+        var project = await GetProjectOrThrowAsync(projectId, cancellationToken);
+        var now = DateTime.UtcNow;
+        var oldStatus = project.ProjectStatus;
+
+        project.ProjectStatus = ProjectStatusConstants.Completed;
+        project.IsActive = false;
+        project.UpdatedAt = now;
+
+        await projectRepository.UpdateAsync(project, cancellationToken);
+
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.Projects,
+            project.Id,
+            new { projectStatus = oldStatus, isActive = true },
+            new { projectStatus = project.ProjectStatus, isActive = project.IsActive },
+            cancellationToken);
+
+        await projectRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Project archived. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Projects, project.Id, actorUserId);
     }
 
     public async Task<MilestoneListResponseDto> GetMilestonesAsync(long projectId, CancellationToken cancellationToken = default)
@@ -219,8 +254,12 @@ public class ProjectService(
         if (milestone.ProjectId != projectId)
             throw new NotFoundAppException("Milestone not found for this project.");
 
-        milestone.MilestoneStatus = request.MilestoneStatus.Trim().ToUpperInvariant();
+        var status = request.MilestoneStatus.Trim().ToUpperInvariant();
+        milestone.MilestoneStatus = status;
         milestone.UpdatedAt = DateTime.UtcNow;
+        milestone.CompletedAt = status == MilestoneStatusConstants.Done
+            ? DateTime.UtcNow
+            : null;
 
         await milestoneRepository.UpdateAsync(milestone, cancellationToken);
         await projectRepository.SaveChangesAsync(cancellationToken);
@@ -261,14 +300,14 @@ public class ProjectService(
             MilestoneTitle = m.MilestoneTitle,
             DueDate = m.DueDate,
             MilestoneStatus = m.MilestoneStatus,
-            IsOverdue = m.DueDate < today && m.MilestoneStatus != "DONE"
+            IsOverdue = m.DueDate < today && m.MilestoneStatus != MilestoneStatusConstants.Done
         }).ToList();
 
         var allocations = await allocationRepository.GetActiveByProjectIdAsync(projectId, cancellationToken);
         var resources = new List<ManagerProjectResourceDto>();
         foreach (var allocation in allocations)
         {
-            var employee = await employeeRepository.GetByIdAsync(allocation.EmployeeId, cancellationToken);
+            var employee = await employeeRepository.GetByIdAsync(allocation.ResourceProfileId, cancellationToken);
             var user = employee is not null
                 ? await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
                 : null;
@@ -312,6 +351,7 @@ public class ProjectService(
         var milestonesByProject = milestones.GroupBy(m => m.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
 
         var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
+        var thresholds = await healthThresholdProvider.GetThresholdsAsync(cancellationToken);
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeek, weekEnd, cancellationToken);
         var allocationsByProject = allocations.GroupBy(a => a.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
         var loggedHoursByProject = await timesheetRepository.GetLoggedHoursByProjectForWeekAsync(lastWeek, cancellationToken);
@@ -329,7 +369,13 @@ public class ProjectService(
                 var loggedHours = loggedHoursByProject.GetValueOrDefault(project.Id, 0m);
 
                 var flags = HealthFlagEvaluator.EvaluateFlags(
-                    project.EndDate, projectMilestones, expectedHours, loggedHours, today);
+                    project.EndDate,
+                    projectMilestones,
+                    expectedHours,
+                    loggedHours,
+                    today,
+                    thresholds.LowHoursThreshold,
+                    thresholds.ApproachingDeadlineDays);
                 var healthStatus = HealthFlagEvaluator.MapToHealthStatus(flags);
 
                 await projectRepository.UpdateHealthStatusAsync(project.Id, healthStatus, cancellationToken);
@@ -357,27 +403,28 @@ public class ProjectService(
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
+        var thresholds = await healthThresholdProvider.GetThresholdsAsync(cancellationToken);
         var flags = new List<string>();
 
         if (milestones.Any(m => m.IsOverdue))
             flags.Add(ProjectConstants.FlagOverdueMilestone);
 
         var daysUntilEnd = endDate.DayNumber - today.DayNumber;
-        if (daysUntilEnd < ProjectConstants.ApproachingDeadlineDays
-            && milestones.Any(m => m.MilestoneStatus != "DONE"))
+        if (daysUntilEnd < thresholds.ApproachingDeadlineDays
+            && milestones.Any(m => m.MilestoneStatus != MilestoneStatusConstants.Done))
         {
             flags.Add(ProjectConstants.FlagApproachingDeadline);
         }
 
         var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
         var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
-        var employeeIds = allocations.Select(a => a.EmployeeId).Distinct().ToList();
+        var employeeIds = allocations.Select(a => a.ResourceProfileId).Distinct().ToList();
         var timesheets = await timesheetRepository.GetByEmployeeIdsAndWeekAsync(employeeIds, lastWeek, cancellationToken);
-        var timesheetLookup = timesheets.ToDictionary(t => t.EmployeeId);
+        var timesheetLookup = timesheets.ToDictionary(t => t.ResourceProfileId);
 
         foreach (var allocation in allocations)
         {
-            if (!timesheetLookup.TryGetValue(allocation.EmployeeId, out var timesheet)
+            if (!timesheetLookup.TryGetValue(allocation.ResourceProfileId, out var timesheet)
                 || timesheet.Status != TimesheetConstants.StatusSubmitted)
                 continue;
 
@@ -387,7 +434,7 @@ public class ProjectService(
                 .Sum(li => li.HoursLogged);
 
             var expectedHours = allocation.AllocationPercentage / 100m * maxWeeklyHours;
-            if (projectHours < expectedHours * ProjectConstants.LowHoursThreshold)
+            if (projectHours < expectedHours * thresholds.LowHoursThreshold)
                 flags.Add(ProjectConstants.FlagLowHours);
         }
 
@@ -411,7 +458,8 @@ public class ProjectService(
         var manager = await userRepository.GetByIdAsync(managerUserId, cancellationToken)
             ?? throw new ValidationAppException("Manager user not found.");
 
-        if (!manager.IsActive || !string.Equals(manager.Role, RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
+        if (!manager.IsActive
+            || !await roleRepository.UserHasRoleAsync(managerUserId, RoleConstants.Manager, cancellationToken))
             throw new ValidationAppException("Specified user is not an active manager.", errorCode: ErrorCodes.InvalidManager);
     }
 

@@ -1,4 +1,8 @@
 using Server.Common;
+using Server.Services.Employees;
+using Server.Services.Projects;
+using Server.Services.SystemConfig;
+using Server.Services.Timesheets;
 
 namespace Server.Scheduler;
 
@@ -18,19 +22,27 @@ public class BackgroundScheduler(IServiceProvider serviceProvider, ILogger<Backg
                 var configRepo = scope.ServiceProvider.GetRequiredService<ISystemConfigRepository>();
                 var projectService = scope.ServiceProvider.GetRequiredService<IProjectService>();
                 var timesheetService = scope.ServiceProvider.GetRequiredService<ITimesheetService>();
+                var resourceStatusService = scope.ServiceProvider.GetRequiredService<IResourceStatusService>();
                 var jobLogRepo = scope.ServiceProvider.GetRequiredService<ISchedulerJobLogRepository>();
 
                 var healthResult = await projectService.EvaluateAllProjectsHealthAsync(stoppingToken);
                 var missedCreated = await timesheetService.MarkMissedTimesheetsAsync(stoppingToken);
+                var statusesUpdated = await resourceStatusService.ReconcileAllResourceStatusesAsync(stoppingToken);
                 var completedAt = DateTime.UtcNow;
 
-                await jobLogRepo.LogAsync(JobName, "SUCCESS", startedAt, completedAt, cancellationToken: stoppingToken);
+                await jobLogRepo.LogAsync(
+                    JobName,
+                    SchedulerJobStatusConstants.Success,
+                    startedAt,
+                    completedAt,
+                    cancellationToken: stoppingToken);
 
                 logger.LogInformation(
-                    "Scheduler completed. Evaluated={Evaluated}, HealthFailed={HealthFailed}, MissedCreated={MissedCreated}, ElapsedMs={ElapsedMs}",
+                    "Scheduler completed. Evaluated={Evaluated}, HealthFailed={HealthFailed}, MissedCreated={MissedCreated}, StatusesUpdated={StatusesUpdated}, ElapsedMs={ElapsedMs}",
                     healthResult.EvaluatedCount,
                     healthResult.FailedCount,
                     missedCreated,
+                    statusesUpdated,
                     (completedAt - startedAt).TotalMilliseconds);
 
                 var intervalHours = await GetSchedulerIntervalHoursAsync(configRepo, stoppingToken);
@@ -46,7 +58,7 @@ public class BackgroundScheduler(IServiceProvider serviceProvider, ILogger<Backg
                     var jobLogRepo = scope.ServiceProvider.GetRequiredService<ISchedulerJobLogRepository>();
                     await jobLogRepo.LogAsync(
                         JobName,
-                        "FAILED",
+                        SchedulerJobStatusConstants.Failed,
                         startedAt,
                         DateTime.UtcNow,
                         ex.ToString(),
@@ -78,7 +90,7 @@ public class BackgroundScheduler(IServiceProvider serviceProvider, ILogger<Backg
     {
         var config = await configRepo.GetByKeyAsync(ConfigKeys.SchedulerIntervalHours, cancellationToken);
         if (config is null || !int.TryParse(config.ConfigValue, out var interval) || interval <= 0)
-            return 4;
+            return SchedulerDefaults.IntervalHours;
 
         return interval;
     }

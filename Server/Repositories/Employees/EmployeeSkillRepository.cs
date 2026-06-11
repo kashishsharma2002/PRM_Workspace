@@ -6,44 +6,50 @@ namespace Server.Repositories.Employees;
 
 public class EmployeeSkillRepository(PrmDbContext context) : IEmployeeSkillRepository
 {
-    public async Task<IReadOnlyList<EmployeeSkill>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
-        await context.EmployeeSkills
-            .Where(es => es.EmployeeId == employeeId)
+    public async Task<IReadOnlyList<UserSkill>> GetByUserIdAsync(
+        long userId,
+        CancellationToken cancellationToken = default) =>
+        await context.UserSkills
+            .Where(us => us.UserId == userId)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<EmployeeSkill>> GetByEmployeeIdsAsync(
-        IEnumerable<long> employeeIds,
+    public async Task<IReadOnlyList<UserSkill>> GetByUserIdsAsync(
+        IEnumerable<long> userIds,
         CancellationToken cancellationToken = default)
     {
-        var ids = employeeIds.ToList();
+        var ids = userIds.ToList();
         if (ids.Count == 0)
             return [];
 
-        return await context.EmployeeSkills
-            .Where(es => ids.Contains(es.EmployeeId))
+        return await context.UserSkills
+            .Where(us => ids.Contains(us.UserId))
             .ToListAsync(cancellationToken);
     }
 
-    public Task<bool> ExistsAsync(long employeeId, long skillId, CancellationToken cancellationToken = default) =>
-        context.EmployeeSkills.AnyAsync(es => es.EmployeeId == employeeId && es.SkillId == skillId, cancellationToken);
+    public Task<bool> ExistsAsync(long userId, long skillId, CancellationToken cancellationToken = default) =>
+        context.UserSkills.AnyAsync(
+            us => us.UserId == userId && us.SkillId == skillId,
+            cancellationToken);
 
-    public Task<EmployeeSkill?> GetAsync(long employeeId, long skillId, CancellationToken cancellationToken = default) =>
-        context.EmployeeSkills.FirstOrDefaultAsync(es => es.EmployeeId == employeeId && es.SkillId == skillId, cancellationToken);
+    public Task<UserSkill?> GetAsync(long userId, long skillId, CancellationToken cancellationToken = default) =>
+        context.UserSkills.FirstOrDefaultAsync(
+            us => us.UserId == userId && us.SkillId == skillId,
+            cancellationToken);
 
-    public async Task AddAsync(EmployeeSkill employeeSkill, CancellationToken cancellationToken = default)
+    public async Task AddAsync(UserSkill userSkill, CancellationToken cancellationToken = default)
     {
-        await context.EmployeeSkills.AddAsync(employeeSkill, cancellationToken);
+        await context.UserSkills.AddAsync(userSkill, cancellationToken);
     }
 
-    public Task UpdateAsync(EmployeeSkill employeeSkill, CancellationToken cancellationToken = default)
+    public Task UpdateAsync(UserSkill userSkill, CancellationToken cancellationToken = default)
     {
-        context.EmployeeSkills.Update(employeeSkill);
+        context.UserSkills.Update(userSkill);
         return Task.CompletedTask;
     }
 
-    public Task RemoveAsync(EmployeeSkill employeeSkill, CancellationToken cancellationToken = default)
+    public Task RemoveAsync(UserSkill userSkill, CancellationToken cancellationToken = default)
     {
-        context.EmployeeSkills.Remove(employeeSkill);
+        context.UserSkills.Remove(userSkill);
         return Task.CompletedTask;
     }
 }

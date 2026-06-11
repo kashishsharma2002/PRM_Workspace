@@ -7,4 +7,6 @@ public class CreateUserRequestDto
     public string Username { get; set; } = string.Empty;
     public string TemporaryPassword { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
+    public string? Department { get; set; }
+    public string? Designation { get; set; }
 }

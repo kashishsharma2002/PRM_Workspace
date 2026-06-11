@@ -65,6 +65,17 @@ public class ProjectController(IProjectService projectService) : ControllerBase
     }
 
     [Authorize(Roles = RoleConstants.Admin)]
+    [HttpPut("{id:long}/archive")]
+    public async Task<ActionResult<ApiResponse<object>>> ArchiveProject(
+        long id,
+        CancellationToken cancellationToken)
+    {
+        var actorUserId = GetActorUserId();
+        await projectService.ArchiveProjectAsync(actorUserId, id, cancellationToken);
+        return Ok(ApiResponse<object>.Ok(new { }, "Project archived."));
+    }
+
+    [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateProject(
         long id,

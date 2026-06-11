@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Server.Common;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Users;
@@ -20,10 +22,13 @@ public class UserServiceCreateTests : IDisposable
             .Options;
 
         _context = new PrmDbContext(options);
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+
         _userService = new UserService(
             _context,
             new UserRepository(_context),
             new EmployeeRepository(_context),
+            TestServiceFactory.CreateRoleRepository(_context),
             TestServiceFactory.CreateAuditService(_context),
             TestServiceFactory.CreateLogger<UserService>());
     }
@@ -37,7 +42,9 @@ public class UserServiceCreateTests : IDisposable
             Email = "priya.sharma@techserve.com",
             Username = "priya.sharma",
             TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE"
+            Role = "EMPLOYEE",
+            Department = DepartmentConstants.SoftwareDevelopment,
+            Designation = DesignationConstants.Jse
         });
 
         Assert.True(result.UserId > 0);
@@ -45,15 +52,17 @@ public class UserServiceCreateTests : IDisposable
         Assert.Equal($"EMP-{result.UserId:D6}", result.EmployeeCode);
 
         var user = await _context.Users.FindAsync(result.UserId);
-        var employee = await _context.Employees.FindAsync(result.EmployeeId);
+        var profile = await _context.ResourceProfiles.FindAsync(result.EmployeeId);
         var auditCount = await _context.AuditLogs.CountAsync();
+        var role = await TestServiceFactory.CreateRoleRepository(_context)
+            .GetRoleNameForUserAsync(result.UserId);
 
         Assert.NotNull(user);
-        Assert.NotNull(employee);
-        Assert.Equal("EMPLOYEE", user!.Role);
-        Assert.True(user.ForcePasswordChange);
-        Assert.Equal(user.Id, employee!.UserId);
-        Assert.Equal("BENCH", employee.EmploymentStatus);
+        Assert.NotNull(profile);
+        Assert.Equal(RoleConstants.Employee, role);
+        Assert.True(user!.IsTemporaryPassword);
+        Assert.Equal(user.Id, profile!.UserId);
+        Assert.Equal("BENCH", profile.ResourceStatus);
         Assert.Equal(1, auditCount);
     }
 
@@ -66,7 +75,9 @@ public class UserServiceCreateTests : IDisposable
             Email = "first@techserve.com",
             Username = "duplicate.user",
             TemporaryPassword = "Welcome1",
-            Role = "MANAGER"
+            Role = "MANAGER",
+            Department = DepartmentConstants.Management,
+            Designation = DesignationConstants.DeliveryManager
         };
 
         await _userService.CreateUserAccountAsync(1, request);
@@ -77,7 +88,9 @@ public class UserServiceCreateTests : IDisposable
             Email = "second@techserve.com",
             Username = "duplicate.user",
             TemporaryPassword = "Welcome2",
-            Role = "EMPLOYEE"
+            Role = "EMPLOYEE",
+            Department = DepartmentConstants.Qa,
+            Designation = DesignationConstants.SoftwareEngineer
         };
 
         await Assert.ThrowsAsync<ConflictAppException>(() =>

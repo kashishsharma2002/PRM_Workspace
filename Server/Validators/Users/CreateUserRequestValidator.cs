@@ -1,4 +1,5 @@
 using FluentValidation;
+using Server.Common;
 using Server.Common.Roles;
 using Server.Models.DTOs.Users;
 
@@ -6,7 +7,6 @@ namespace Server.Validators.Users;
 
 public class CreateUserRequestValidator : AbstractValidator<CreateUserRequestDto>
 {
-
     public CreateUserRequestValidator()
     {
         RuleFor(x => x.FullName)
@@ -32,5 +32,51 @@ public class CreateUserRequestValidator : AbstractValidator<CreateUserRequestDto
             .NotEmpty().WithMessage("Role is required.")
             .Must(r => RoleConstants.All.Contains(r, StringComparer.OrdinalIgnoreCase))
             .WithMessage("Role must be ADMIN, MANAGER, or EMPLOYEE.");
+
+        RuleFor(x => x.Department)
+            .Must((dto, dept) => IsValidDepartment(dto.Role, dept))
+            .WithMessage("Invalid department for the selected role.");
+
+        RuleFor(x => x.Designation)
+            .Must((dto, desig) => IsValidDesignation(dto.Role, desig))
+            .WithMessage("Invalid designation for the selected role.");
+    }
+
+    private static bool IsValidDepartment(string role, string? department)
+    {
+        var normalizedRole = role.Trim().ToUpperInvariant();
+        var options = normalizedRole switch
+        {
+            RoleConstants.Admin => DepartmentConstants.AdminOptions,
+            RoleConstants.Manager => DepartmentConstants.ManagerOptions,
+            RoleConstants.Employee => DepartmentConstants.EmployeeOptions,
+            _ => Array.Empty<string>()
+        };
+
+        if (normalizedRole == RoleConstants.Admin)
+            return string.IsNullOrWhiteSpace(department)
+                || options.Contains(department.Trim().ToUpperInvariant());
+
+        return !string.IsNullOrWhiteSpace(department)
+            && options.Contains(department.Trim().ToUpperInvariant());
+    }
+
+    private static bool IsValidDesignation(string role, string? designation)
+    {
+        var normalizedRole = role.Trim().ToUpperInvariant();
+        var options = normalizedRole switch
+        {
+            RoleConstants.Admin => DesignationConstants.AdminOptions,
+            RoleConstants.Manager => DesignationConstants.ManagerOptions,
+            RoleConstants.Employee => DesignationConstants.EmployeeOptions,
+            _ => Array.Empty<string>()
+        };
+
+        if (normalizedRole == RoleConstants.Admin)
+            return string.IsNullOrWhiteSpace(designation)
+                || options.Contains(designation.Trim().ToUpperInvariant());
+
+        return !string.IsNullOrWhiteSpace(designation)
+            && options.Contains(designation.Trim().ToUpperInvariant());
     }
 }

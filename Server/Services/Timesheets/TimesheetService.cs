@@ -81,7 +81,7 @@ public class TimesheetService(
         {
             var timesheet = new Timesheet
             {
-                EmployeeId = employeeId,
+                ResourceProfileId = employeeId,
                 WeekStartDate = request.WeekStartDate,
                 Status = TimesheetConstants.StatusSubmitted,
                 TotalHours = totalHours,
@@ -283,7 +283,7 @@ public class TimesheetService(
         var lastWeekStart = WeekDateHelper.GetMostRecentCompletedWeekMonday();
         var weekEnd = WeekDateHelper.GetWeekEnd(lastWeekStart);
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeekStart, weekEnd, cancellationToken);
-        var employeeIds = allocations.Select(a => a.EmployeeId).Distinct().ToList();
+        var employeeIds = allocations.Select(a => a.ResourceProfileId).Distinct().ToList();
 
         if (employeeIds.Count == 0)
             return 0;
@@ -301,7 +301,7 @@ public class TimesheetService(
 
             await timesheetRepository.AddAsync(new Timesheet
             {
-                EmployeeId = employeeId,
+                ResourceProfileId = employeeId,
                 WeekStartDate = lastWeekStart,
                 Status = TimesheetConstants.StatusMissed,
                 TotalHours = 0,
@@ -347,16 +347,16 @@ public class TimesheetService(
             employeeIds, resolvedWeek, weekEnd, cancellationToken);
         var timesheets = await timesheetRepository.GetByEmployeeIdsAndWeekAsync(
             employeeIds, resolvedWeek, cancellationToken);
-        var timesheetByEmployee = timesheets.ToDictionary(t => t.EmployeeId);
+        var timesheetByEmployee = timesheets.ToDictionary(t => t.ResourceProfileId);
 
         var rows = new List<TeamTimesheetRowDto>();
         foreach (var allocation in allocations)
         {
             var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
             var projectName = project?.ProjectName ?? "Unknown";
-            var employeeName = employeeNameLookup.GetValueOrDefault(allocation.EmployeeId, "Unknown");
+            var employeeName = employeeNameLookup.GetValueOrDefault(allocation.ResourceProfileId, "Unknown");
 
-            if (!timesheetByEmployee.TryGetValue(allocation.EmployeeId, out var timesheet))
+            if (!timesheetByEmployee.TryGetValue(allocation.ResourceProfileId, out var timesheet))
                 continue;
 
             if (timesheet.Status == TimesheetConstants.StatusMissed)
@@ -405,14 +405,14 @@ public class TimesheetService(
         var timesheet = await timesheetRepository.GetByIdForEmployeeCheckAsync(timesheetId, cancellationToken)
             ?? throw new NotFoundAppException("Timesheet not found.");
 
-        var employee = await employeeRepository.GetByIdAsync(timesheet.EmployeeId, cancellationToken)
+        var profile = await employeeRepository.GetByIdAsync(timesheet.ResourceProfileId, cancellationToken)
             ?? throw new NotFoundAppException("Timesheet not found.");
 
-        if (employee.ManagerId != managerUserId)
+        if (profile.ManagerId != managerUserId)
             throw new NotFoundAppException("Timesheet not found.");
 
-        var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken);
-        var detail = await GetTimesheetDetailAsync(timesheet.EmployeeId, timesheetId, cancellationToken);
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken);
+        var detail = await GetTimesheetDetailAsync(timesheet.ResourceProfileId, timesheetId, cancellationToken);
 
         return new ManagerTimesheetDetailDto
         {

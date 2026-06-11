@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,6 +11,16 @@ namespace Server.Migrations
 
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.InsertData(
+                table: "ROLES",
+                columns: new[] { "id", "role_name", "created_at" },
+                values: new object[,]
+                {
+                    { 1L, "ADMIN", SeedTimestamp },
+                    { 2L, "MANAGER", SeedTimestamp },
+                    { 3L, "EMPLOYEE", SeedTimestamp }
+                });
+
             migrationBuilder.InsertData(
                 table: "ACTIVITY_TAGS",
                 columns: new[] { "id", "tag_code", "tag_name", "tag_category", "is_active", "created_at" },
@@ -55,6 +65,14 @@ namespace Server.Migrations
             {
                 migrationBuilder.DeleteData(
                     table: "ACTIVITY_TAGS",
+                    keyColumn: "id",
+                    keyValue: id);
+            }
+
+            for (long id = 3L; id >= 1L; id--)
+            {
+                migrationBuilder.DeleteData(
+                    table: "ROLES",
                     keyColumn: "id",
                     keyValue: id);
             }

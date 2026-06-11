@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.Entities;
@@ -44,7 +45,10 @@ public class TimesheetServiceTests : IDisposable
 
     private (long employeeId, long userId, long projectId) SeedData()
     {
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
         var now = DateTime.UtcNow;
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
+        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
 
         var user = new User
         {
@@ -52,7 +56,6 @@ public class TimesheetServiceTests : IDisposable
             Email = "ravi@techserve.com",
             FullName = "Ravi Kumar",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -65,7 +68,6 @@ public class TimesheetServiceTests : IDisposable
             Email = "ankit@techserve.com",
             FullName = "Ankit Shah",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -73,16 +75,26 @@ public class TimesheetServiceTests : IDisposable
         _context.Users.Add(manager);
         _context.SaveChanges();
 
-        var employee = new Employee
+        _context.UserRoles.AddRange(
+            new UserRole { UserId = user.Id, RoleId = employeeRole.Id, AssignedAt = now },
+            new UserRole { UserId = manager.Id, RoleId = managerRole.Id, AssignedAt = now });
+
+        var managerProfile = new ResourceProfile
         {
-            UserId = user.Id,
-            EmployeeCode = "EMP-000001",
-            EmploymentStatus = "ALLOCATED",
-            IsActive = true,
+            UserId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
             CreatedAt = now,
             UpdatedAt = now
         };
-        _context.Employees.Add(employee);
+        var employee = new ResourceProfile
+        {
+            UserId = user.Id,
+            ResourceStatus = ResourceStatusConstants.Allocated,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.ResourceProfiles.AddRange(managerProfile, employee);
+        _context.SaveChanges();
 
         var project = new Project
         {
@@ -100,13 +112,13 @@ public class TimesheetServiceTests : IDisposable
 
         _context.ProjectAllocations.Add(new ProjectAllocation
         {
-            EmployeeId = employee.Id,
+            ResourceProfileId = employee.Id,
             ProjectId = project.Id,
             AllocationPercentage = 50,
             AllocationStartDate = new DateOnly(2026, 3, 1),
             AllocationEndDate = new DateOnly(2026, 6, 30),
             AllocationStatus = "ACTIVE",
-            AllocatedByManagerId = manager.Id,
+            AllocatedByUserId = manager.Id,
             CreatedAt = now,
             UpdatedAt = now
         });

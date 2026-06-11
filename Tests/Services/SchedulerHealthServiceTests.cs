@@ -33,18 +33,23 @@ public class SchedulerHealthServiceTests : IDisposable
             projectRepository,
             new MilestoneRepository(_context),
             new UserRepository(_context),
+            TestServiceFactory.CreateRoleRepository(_context),
             new AllocationRepository(_context),
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
+            TestServiceFactory.CreateHealthThresholdProvider(_context),
             TestServiceFactory.CreateAuditService(_context),
             TestServiceFactory.CreateLogger<ProjectService>());
 
     private (long cleanId, long overdueId, long multiFlagId) SeedData()
     {
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
         var now = DateTime.UtcNow;
         var today = DateOnly.FromDateTime(DateTime.Today);
         var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
+        var managerRole = _context.Roles.First(r => r.RoleName == Server.Common.Roles.RoleConstants.Manager);
+        var employeeRole = _context.Roles.First(r => r.RoleName == Server.Common.Roles.RoleConstants.Employee);
 
         var manager = new User
         {
@@ -52,13 +57,19 @@ public class SchedulerHealthServiceTests : IDisposable
             Email = "ankit@techserve.com",
             FullName = "Ankit Shah",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
         };
         _context.Users.Add(manager);
         _context.SaveChanges();
+
+        _context.UserRoles.Add(new UserRole
+        {
+            UserId = manager.Id,
+            RoleId = managerRole.Id,
+            AssignedAt = now
+        });
 
         var clean = new Project
         {
@@ -144,7 +155,6 @@ public class SchedulerHealthServiceTests : IDisposable
             Email = "ravi@techserve.com",
             FullName = "Ravi Kumar",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -152,29 +162,43 @@ public class SchedulerHealthServiceTests : IDisposable
         _context.Users.Add(employeeUser);
         _context.SaveChanges();
 
-        var employee = new Employee
+        _context.UserRoles.Add(new UserRole
         {
             UserId = employeeUser.Id,
-            EmployeeCode = "EMP-000001",
-            Designation = "Developer",
-            Department = "Engineering",
-            EmploymentStatus = "ACTIVE",
-            ManagerId = manager.Id,
+            RoleId = employeeRole.Id,
+            AssignedAt = now
+        });
+
+        var managerProfile = new ResourceProfile
+        {
+            UserId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
             CreatedAt = now,
             UpdatedAt = now
         };
-        _context.Employees.Add(employee);
+        _context.ResourceProfiles.Add(managerProfile);
+        _context.SaveChanges();
+
+        var employee = new ResourceProfile
+        {
+            UserId = employeeUser.Id,
+            ManagerId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Allocated,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.ResourceProfiles.Add(employee);
         _context.SaveChanges();
 
         _context.ProjectAllocations.Add(new ProjectAllocation
         {
-            EmployeeId = employee.Id,
+            ResourceProfileId = employee.Id,
             ProjectId = multiFlag.Id,
             AllocationPercentage = 100m,
             AllocationStartDate = lastWeek.AddMonths(-1),
             AllocationEndDate = today.AddMonths(3),
             AllocationStatus = "ACTIVE",
-            AllocatedByManagerId = manager.Id,
+            AllocatedByUserId = manager.Id,
             CreatedAt = now,
             UpdatedAt = now
         });

@@ -1,4 +1,5 @@
 using Server.Common;
+using Server.Common.Projects;
 using Server.Models.Entities;
 
 namespace Server.Scheduler;
@@ -10,19 +11,21 @@ public static class HealthFlagEvaluator
         IReadOnlyList<ProjectMilestone> milestones,
         decimal expectedHours,
         decimal loggedHours,
-        DateOnly today)
+        DateOnly today,
+        decimal lowHoursThreshold,
+        int approachingDeadlineDays)
     {
         var flags = new List<string>();
 
-        if (milestones.Any(m => m.DueDate < today && m.MilestoneStatus != "DONE"))
+        if (milestones.Any(m => m.DueDate < today && m.MilestoneStatus != MilestoneStatusConstants.Done))
             flags.Add(ProjectConstants.FlagOverdueMilestone);
 
-        if (expectedHours > 0 && loggedHours < expectedHours * ProjectConstants.LowHoursThreshold)
+        if (expectedHours > 0 && loggedHours < expectedHours * lowHoursThreshold)
             flags.Add(ProjectConstants.FlagLowHours);
 
         var daysUntilEnd = endDate.DayNumber - today.DayNumber;
-        if (daysUntilEnd < ProjectConstants.ApproachingDeadlineDays
-            && milestones.Any(m => m.MilestoneStatus != "DONE"))
+        if (daysUntilEnd < approachingDeadlineDays
+            && milestones.Any(m => m.MilestoneStatus != MilestoneStatusConstants.Done))
         {
             flags.Add(ProjectConstants.FlagApproachingDeadline);
         }

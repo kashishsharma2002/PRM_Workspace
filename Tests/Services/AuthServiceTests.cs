@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Server.Common;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Auth;
@@ -26,6 +27,7 @@ public class AuthServiceTests : IDisposable
 
         _context = new PrmDbContext(options);
         var userRepo = new UserRepository(_context);
+        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
 
         var jwtSettings = Options.Create(new JwtSettings
         {
@@ -35,22 +37,36 @@ public class AuthServiceTests : IDisposable
             ExpiryHours = 8
         });
 
-        _authService = new AuthService(userRepo, new JwtTokenService(jwtSettings), TestServiceFactory.CreateLogger<AuthService>());
+        _authService = new AuthService(
+            userRepo,
+            roleRepo,
+            new JwtTokenService(jwtSettings),
+            TestServiceFactory.CreateLogger<AuthService>());
 
         var now = DateTime.UtcNow;
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        var roleEntity = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
+
         _user = new User
         {
             Username = "test.user",
             Email = "test@techserve.com",
             FullName = "Test User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(CurrentPassword),
-            Role = "EMPLOYEE",
-            ForcePasswordChange = true,
+            IsTemporaryPassword = true,
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
         };
         _context.Users.Add(_user);
+        _context.SaveChanges();
+
+        _context.UserRoles.Add(new UserRole
+        {
+            UserId = _user.Id,
+            RoleId = roleEntity.Id,
+            AssignedAt = now
+        });
         _context.SaveChanges();
     }
 
@@ -68,7 +84,7 @@ public class AuthServiceTests : IDisposable
         Assert.Equal(_user.Id, result.UserId);
 
         var updatedUser = await _context.Users.FindAsync(_user.Id);
-        Assert.False(updatedUser!.ForcePasswordChange);
+        Assert.False(updatedUser!.IsTemporaryPassword);
     }
 
     [Fact]

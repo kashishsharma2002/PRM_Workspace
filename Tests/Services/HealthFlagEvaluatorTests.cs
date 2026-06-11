@@ -1,4 +1,5 @@
 using Server.Common;
+using Server.Common.Projects;
 using Server.Models.Entities;
 using Server.Scheduler;
 
@@ -6,23 +7,26 @@ namespace Tests;
 
 public class HealthFlagEvaluatorTests
 {
+  private const decimal DefaultLowHoursThreshold = HealthThresholdDefaults.LowHoursRatio;
+  private const int DefaultApproachingDeadlineDays = HealthThresholdDefaults.ApproachingDeadlineDays;
+
     [Fact]
     public void MapToHealthStatus_ZeroFlags_ReturnsGreen()
     {
-        Assert.Equal("GREEN", HealthFlagEvaluator.MapToHealthStatus([]));
+        Assert.Equal(HealthStatusConstants.Green, HealthFlagEvaluator.MapToHealthStatus([]));
     }
 
     [Fact]
     public void MapToHealthStatus_OneFlag_ReturnsAmber()
     {
-        Assert.Equal("AMBER", HealthFlagEvaluator.MapToHealthStatus([ProjectConstants.FlagLowHours]));
+        Assert.Equal(HealthStatusConstants.Amber, HealthFlagEvaluator.MapToHealthStatus([ProjectConstants.FlagLowHours]));
     }
 
     [Fact]
     public void MapToHealthStatus_TwoFlags_ReturnsRed()
     {
         var flags = new[] { ProjectConstants.FlagLowHours, ProjectConstants.FlagOverdueMilestone };
-        Assert.Equal("RED", HealthFlagEvaluator.MapToHealthStatus(flags));
+        Assert.Equal(HealthStatusConstants.Red, HealthFlagEvaluator.MapToHealthStatus(flags));
     }
 
     [Fact]
@@ -34,12 +38,18 @@ public class HealthFlagEvaluatorTests
             new()
             {
                 DueDate = today.AddDays(-1),
-                MilestoneStatus = "IN_PROGRESS"
+                MilestoneStatus = MilestoneStatusConstants.InProgress
             }
         };
 
         var flags = HealthFlagEvaluator.EvaluateFlags(
-            today.AddMonths(3), milestones, 40m, 40m, today);
+            today.AddMonths(3),
+            milestones,
+            40m,
+            40m,
+            today,
+            DefaultLowHoursThreshold,
+            DefaultApproachingDeadlineDays);
 
         Assert.Contains(ProjectConstants.FlagOverdueMilestone, flags);
     }
@@ -51,10 +61,17 @@ public class HealthFlagEvaluatorTests
         var endDate = today.AddDays(14);
         var milestones = new List<ProjectMilestone>
         {
-            new() { DueDate = endDate, MilestoneStatus = "NOT_STARTED" }
+            new() { DueDate = endDate, MilestoneStatus = MilestoneStatusConstants.NotStarted }
         };
 
-        var flags = HealthFlagEvaluator.EvaluateFlags(endDate, milestones, 0m, 0m, today);
+        var flags = HealthFlagEvaluator.EvaluateFlags(
+            endDate,
+            milestones,
+            0m,
+            0m,
+            today,
+            DefaultLowHoursThreshold,
+            DefaultApproachingDeadlineDays);
 
         Assert.Contains(ProjectConstants.FlagApproachingDeadline, flags);
     }

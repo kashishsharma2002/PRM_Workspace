@@ -8,8 +8,10 @@ using Server.Models.DTOs.Allocations;
 
 namespace Server.Controllers.Allocations;
 
+
 [ApiController]
 [Route("api/allocations")]
+[Produces("application/json")]
 public class AllocationController(IAllocationService allocationService) : ControllerBase
 {
     [Authorize(Roles = RoleConstants.Manager)]
@@ -22,6 +24,18 @@ public class AllocationController(IAllocationService allocationService) : Contro
         var result = await allocationService.CreateAllocationAsync(managerUserId, request, cancellationToken);
         return StatusCode(StatusCodes.Status201Created,
             ApiResponse<CreateAllocationResponseDto>.Ok(result, "Allocation created."));
+    }
+
+    [Authorize(Roles = RoleConstants.Manager)]
+    [HttpPut("{id:long}")]
+    public async Task<ActionResult<ApiResponse<UpdateAllocationResponseDto>>> UpdateAllocation(
+        long id,
+        [FromBody] UpdateAllocationRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var managerUserId = GetActorUserId();
+        var result = await allocationService.UpdateAllocationAsync(managerUserId, id, request, cancellationToken);
+        return Ok(ApiResponse<UpdateAllocationResponseDto>.Ok(result, "Allocation updated."));
     }
 
     [Authorize(Roles = RoleConstants.Manager)]

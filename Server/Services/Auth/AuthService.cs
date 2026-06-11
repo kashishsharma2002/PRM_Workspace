@@ -3,11 +3,13 @@ using Server.Common;
 using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Auth;
+using Server.Repositories.Roles;
 
 namespace Server.Services.Auth;
 
 public class AuthService(
     IUserRepository userRepository,
+    IRoleRepository roleRepository,
     IJwtTokenService jwtTokenService,
     ILogger<AuthService> logger) : IAuthService
 {
@@ -29,12 +31,14 @@ public class AuthService(
             throw new UnauthorizedAppException("Invalid username or password.");
         }
 
-        var employee = await userRepository.GetEmployeeByUserIdAsync(user.Id, cancellationToken);
-        if (employee is not null && !employee.IsActive)
+        var role = await roleRepository.GetRoleNameForUserAsync(user.Id, cancellationToken);
+        if (string.IsNullOrEmpty(role))
         {
-            logger.LogWarning("Failed login attempt for inactive employee user {UserId}", user.Id);
+            logger.LogWarning("Failed login attempt for user {UserId} with no role", user.Id);
             throw new UnauthorizedAppException("Invalid username or password.");
         }
+
+        var resourceProfile = await userRepository.GetResourceProfileByUserIdAsync(user.Id, cancellationToken);
 
         user.LastLoginAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
@@ -42,7 +46,7 @@ public class AuthService(
         await userRepository.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("User {UserId} logged in successfully", user.Id);
-        return jwtTokenService.CreateToken(user, employee);
+        return jwtTokenService.CreateToken(user, role, resourceProfile);
     }
 
     public async Task<LoginResponseDto> ChangePasswordAsync(long userId, ChangePasswordRequestDto request, CancellationToken cancellationToken = default)
@@ -63,12 +67,15 @@ public class AuthService(
             throw new ValidationAppException("New password must be different from the current password.");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        user.ForcePasswordChange = false;
+        user.IsTemporaryPassword = false;
         user.UpdatedAt = DateTime.UtcNow;
         await userRepository.UpdateAsync(user, cancellationToken);
         await userRepository.SaveChangesAsync(cancellationToken);
 
-        var employee = await userRepository.GetEmployeeByUserIdAsync(user.Id, cancellationToken);
-        return jwtTokenService.CreateToken(user, employee);
+        var role = await roleRepository.GetRoleNameForUserAsync(user.Id, cancellationToken)
+            ?? throw new UnauthorizedAppException("User role not found.");
+
+        var resourceProfile = await userRepository.GetResourceProfileByUserIdAsync(user.Id, cancellationToken);
+        return jwtTokenService.CreateToken(user, role, resourceProfile);
     }
 }

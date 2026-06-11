@@ -9,7 +9,9 @@ using Microsoft.IdentityModel.Tokens;
 using Server.AI;
 using Server.Common;
 using Server.Common.Errors;
+using Server.Services.Employees;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 using Server.Data;
 using Server.Middleware;
 using Server.Scheduler;
@@ -22,6 +24,7 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSet
 builder.Services.AddDbContext<PrmDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddScoped<IRoleRepository, RoleRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<ISkillRepository, SkillRepository>();
@@ -41,6 +44,8 @@ builder.Services.AddScoped<ITimesheetService, TimesheetService>();
 builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
 builder.Services.AddScoped<IActivityTagRepository, ActivityTagRepository>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddScoped<IHealthThresholdProvider, HealthThresholdProvider>();
+builder.Services.AddScoped<IResourceStatusService, ResourceStatusService>();
 builder.Services.AddScoped<ISchedulerJobLogRepository, SchedulerJobLogRepository>();
 builder.Services.AddHostedService<BackgroundScheduler>();
 builder.Services.AddMemoryCache();
@@ -99,6 +104,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PrmDbContext>();
+    await db.Database.MigrateAsync();
     await DatabaseSeeder.SeedAsync(db);
 }
 

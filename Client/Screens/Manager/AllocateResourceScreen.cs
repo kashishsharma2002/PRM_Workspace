@@ -53,85 +53,111 @@ public static class AllocateResourceScreen
 
     private static async Task RunDirectAllocationAsync(RestClient client)
     {
-        ConsoleHelper.PrintHeader("Direct Allocation");
-        var projects = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
-        if (projects is null || projects.Projects.Count == 0)
+        while (true)
         {
-            Console.WriteLine("No projects found.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Direct Allocation");
+            var projects = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+            if (projects is null || projects.Projects.Count == 0)
+            {
+                Console.WriteLine("No projects found.");
+                return;
+            }
 
-        for (var i = 0; i < projects.Projects.Count; i++)
-        {
-            var project = projects.Projects[i];
-            Console.WriteLine($"{i + 1,2}.  {project.ProjectName} ({project.Id})");
-        }
+            for (var i = 0; i < projects.Projects.Count; i++)
+            {
+                var project = projects.Projects[i];
+                Console.WriteLine($"{i + 1,2}.  {project.ProjectName} ({project.Id})");
+            }
 
-        ConsoleHelper.PrintDivider();
-        Console.Write("Select project number: ");
-        if (!int.TryParse(Console.ReadLine()?.Trim(), out var projectSelection)
-            || projectSelection < 1
-            || projectSelection > projects.Projects.Count)
-        {
-            ConsoleHelper.PrintError("Invalid project selection.");
-            return;
-        }
+            ConsoleHelper.PrintDivider();
+            Console.Write("Select project number (B to go back): ");
+            var projectInput = Console.ReadLine()?.Trim();
+            if (string.Equals(projectInput, "B", StringComparison.OrdinalIgnoreCase))
+                return;
 
-        var selectedProject = projects.Projects[projectSelection - 1];
+            if (!int.TryParse(projectInput, out var projectSelection)
+                || projectSelection < 1
+                || projectSelection > projects.Projects.Count)
+            {
+                ConsoleHelper.PrintError("Invalid project selection.");
+                continue;
+            }
 
-        var employeeId = await ManagerTeamEmployeePicker.PromptEmployeeIdAsync(client);
-        if (employeeId is null)
-            return;
+            var selectedProject = projects.Projects[projectSelection - 1];
 
-        Console.Write("Utilisation % (1-100): ");
-        if (!decimal.TryParse(Console.ReadLine()?.Trim(), out var percentage) || percentage < 1 || percentage > 100)
-        {
-            ConsoleHelper.PrintError("Allocation percentage must be between 1 and 100.");
-            return;
-        }
+            var employeeId = await ManagerTeamEmployeePicker.PromptEmployeeIdAsync(client);
+            if (employeeId is null)
+                return;
 
-        Console.Write("From Date (DD-MM-YYYY): ");
-        if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var startIso))
-        {
-            ConsoleHelper.PrintError("Invalid start date.");
-            return;
-        }
+            Console.Write("Utilisation % (1-100): ");
+            if (!decimal.TryParse(Console.ReadLine()?.Trim(), out var percentage) || percentage < 1 || percentage > 100)
+            {
+                ConsoleHelper.PrintError("Allocation percentage must be between 1 and 100.");
+                continue;
+            }
 
-        Console.Write("To Date (DD-MM-YYYY): ");
-        if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var endIso))
-        {
-            ConsoleHelper.PrintError("Invalid end date.");
-            return;
-        }
+            Console.Write("From Date (DD-MM-YYYY): ");
+            if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var startIso))
+            {
+                ConsoleHelper.PrintError("Invalid start date.");
+                continue;
+            }
 
-        var startDate = DateOnly.Parse(startIso);
-        var endDate = DateOnly.Parse(endIso);
-        if (endDate <= startDate)
-        {
-            ConsoleHelper.PrintError("End date must be after start date.");
-            return;
-        }
+            Console.Write("To Date (DD-MM-YYYY): ");
+            if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var endIso))
+            {
+                ConsoleHelper.PrintError("Invalid end date.");
+                continue;
+            }
 
-        ConsoleHelper.PrintDivider();
-        Console.Write("[C] Confirm Allocation     [B] Back: ");
-        var confirm = Console.ReadLine()?.Trim().ToUpperInvariant();
-        if (confirm != "C")
-            return;
+            var startDate = DateOnly.Parse(startIso);
+            var endDate = DateOnly.Parse(endIso);
+            if (endDate <= startDate)
+            {
+                ConsoleHelper.PrintError("End date must be after start date.");
+                continue;
+            }
 
-        var result = await client.PostAsync<CreateAllocationResponse>("/api/allocations", new CreateAllocationRequest
-        {
-            EmployeeId = employeeId.Value,
-            ProjectId = selectedProject.Id,
-            AllocationPercentage = percentage,
-            AllocationStartDate = startDate,
-            AllocationEndDate = endDate
-        }, requireAuth: true);
+            ConsoleHelper.PrintDivider();
+            Console.Write("[C] Confirm Allocation     [B] Back: ");
+            var confirm = Console.ReadLine()?.Trim().ToUpperInvariant();
+            if (confirm == "B")
+                return;
+            if (confirm != "C")
+            {
+                ConsoleHelper.PrintError("Invalid choice. Enter C to confirm or B to go back.");
+                continue;
+            }
 
-        if (result is not null)
-        {
-            ConsoleHelper.PrintSuccess(
-                $"Allocation saved. Employee {result.EmployeeId} → Project {result.ProjectId} " +
-                $"({result.AllocationPercentage:0.#}%, {DateInputHelper.FormatDisplay(startDate)}–{DateInputHelper.FormatDisplay(endDate)})");
+            try
+            {
+                var result = await client.PostAsync<CreateAllocationResponse>("/api/allocations", new CreateAllocationRequest
+                {
+                    EmployeeId = employeeId.Value,
+                    ProjectId = selectedProject.Id,
+                    AllocationPercentage = percentage,
+                    AllocationStartDate = startDate,
+                    AllocationEndDate = endDate
+                }, requireAuth: true);
+
+                if (result is not null)
+                {
+                    ConsoleHelper.PrintSuccess(
+                        $"Allocation saved. Employee {result.EmployeeId} → Project {result.ProjectId} " +
+                        $"({result.AllocationPercentage:0.#}%, {DateInputHelper.FormatDisplay(startDate)}–{DateInputHelper.FormatDisplay(endDate)})");
+                    return;
+                }
+
+                ConsoleHelper.PrintError("Allocation could not be saved. Please try again.");
+            }
+            catch (SessionExpiredException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ErrorDisplayHelper.HandleException(ex);
+            }
         }
     }
 

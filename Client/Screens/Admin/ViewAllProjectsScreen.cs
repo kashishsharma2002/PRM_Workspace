@@ -17,13 +17,13 @@ public static class ViewAllProjectsScreen
             }
 
             ConsoleHelper.PrintHeader("All Projects");
-            Console.WriteLine($"{"ID",-6}{"Name",-18}{"Manager",-14}{"End Date",-12}{"Status",-10}{"SP Done/Total"}");
+            Console.WriteLine($"{"ID",-6}{"Name",-16}{"Manager",-14}{"End Date",-12}{"Status",-10}{"Health",-8}{"SP Done/Total"}");
             ConsoleHelper.PrintDivider();
 
             foreach (var project in list.Projects)
             {
-                Console.WriteLine($"{project.Id,-6}{project.ProjectName,-18}{project.ManagerName,-14}" +
-                    $"{DateInputHelper.FormatDisplay(project.EndDate),-12}{project.ProjectStatus,-10}" +
+                Console.WriteLine($"{project.Id,-6}{project.ProjectName,-16}{project.ManagerName,-14}" +
+                    $"{DateInputHelper.FormatDisplay(project.EndDate),-12}{project.ProjectStatus,-10}{project.HealthStatus,-8}" +
                     $"{project.StoryPointsDone} / {project.TotalStoryPoints}");
             }
 

@@ -11,6 +11,7 @@ namespace Server.Controllers.Users;
 [Authorize(Roles = RoleConstants.Admin)]
 [ApiController]
 [Route("api/users")]
+[Produces("application/json")]
 public class UserController(IUserService userService) : ControllerBase
 {
     [HttpPost]
@@ -30,6 +31,28 @@ public class UserController(IUserService userService) : ControllerBase
     {
         var result = await userService.GetAllUsersAsync(cancellationToken);
         return Ok(ApiResponse<UserListResponseDto>.Ok(result, "Users retrieved."));
+    }
+
+    [HttpPut("{id:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> UpdateUser(
+        long id,
+        [FromBody] UpdateUserRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var actorUserId = GetActorUserId();
+        await userService.UpdateUserAsync(actorUserId, id, request, cancellationToken);
+        return Ok(ApiResponse<object>.Ok(new { }, "User updated."));
+    }
+
+    [HttpPut("{id:long}/roles")]
+    public async Task<ActionResult<ApiResponse<object>>> UpdateUserRole(
+        long id,
+        [FromBody] UpdateUserRoleRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var actorUserId = GetActorUserId();
+        await userService.UpdateUserRoleAsync(actorUserId, id, request, cancellationToken);
+        return Ok(ApiResponse<object>.Ok(new { }, "User role updated."));
     }
 
     [HttpPut("{id:long}/reset-password")]

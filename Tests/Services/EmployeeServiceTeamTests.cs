@@ -5,7 +5,6 @@ using Server.Common.Allocations;
 using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
-using Server.Models.DTOs.Employees;
 using Server.Models.DTOs.Users;
 using Server.Models.Entities;
 
@@ -25,6 +24,7 @@ public class EmployeeServiceTeamTests : IDisposable
             .Options;
 
         _context = new PrmDbContext(options);
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
 
         var userRepo = new UserRepository(_context);
         var employeeRepo = new EmployeeRepository(_context);
@@ -33,14 +33,21 @@ public class EmployeeServiceTeamTests : IDisposable
         var allocationRepo = new AllocationRepository(_context);
         var projectRepo = new ProjectRepository(_context);
         var timesheetRepo = new TimesheetRepository(_context);
-        var auditRepo = new AuditLogRepository(_context);
-
         var auditService = TestServiceFactory.CreateAuditService(_context);
-        _userService = new UserService(_context, userRepo, employeeRepo, auditService, TestServiceFactory.CreateLogger<UserService>());
+        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
+
+        _userService = new UserService(
+            _context,
+            userRepo,
+            employeeRepo,
+            roleRepo,
+            auditService,
+            TestServiceFactory.CreateLogger<UserService>());
         _employeeService = new EmployeeService(
             _context,
             employeeRepo,
             userRepo,
+            roleRepo,
             skillRepo,
             employeeSkillRepo,
             allocationRepo,
@@ -53,11 +60,11 @@ public class EmployeeServiceTeamTests : IDisposable
     [Fact]
     public async Task GetTeamDashboardAsync_SplitsBenchAndActive()
     {
-        var managerId = await CreateManagerAsync();
-        var benchEmployeeId = await CreateTeamEmployeeAsync(managerId, "bench.user", hasAllocation: false);
-        var activeEmployeeId = await CreateTeamEmployeeAsync(managerId, "active.user", hasAllocation: true);
+        var managerUserId = await CreateManagerAsync();
+        var benchEmployeeId = await CreateTeamEmployeeAsync(managerUserId, "bench.user", hasAllocation: false);
+        var activeEmployeeId = await CreateTeamEmployeeAsync(managerUserId, "active.user", hasAllocation: true);
 
-        var dashboard = await _employeeService.GetTeamDashboardAsync(managerId);
+        var dashboard = await _employeeService.GetTeamDashboardAsync(managerUserId);
 
         Assert.Equal(1, dashboard.BenchCount);
         Assert.Single(dashboard.BenchEmployees);
@@ -70,12 +77,12 @@ public class EmployeeServiceTeamTests : IDisposable
     [Fact]
     public async Task GetTeamMemberDetailAsync_RejectsOutOfScopeEmployee()
     {
-        var managerId = await CreateManagerAsync();
-        var otherManagerId = await CreateManagerAsync("other.mgr");
-        var employeeId = await CreateTeamEmployeeAsync(otherManagerId, "other.team", hasAllocation: false);
+        var managerUserId = await CreateManagerAsync();
+        var otherManagerUserId = await CreateManagerAsync("other.mgr");
+        var employeeId = await CreateTeamEmployeeAsync(otherManagerUserId, "other.team", hasAllocation: false);
 
         await Assert.ThrowsAsync<ForbiddenAppException>(
-            () => _employeeService.GetTeamMemberDetailAsync(managerId, employeeId));
+            () => _employeeService.GetTeamMemberDetailAsync(managerUserId, employeeId));
     }
 
     private async Task<long> CreateManagerAsync(string username = "team.mgr")
@@ -86,12 +93,25 @@ public class EmployeeServiceTeamTests : IDisposable
             Email = $"{username}@techserve.com",
             Username = username,
             TemporaryPassword = "Welcome1",
-            Role = "MANAGER"
+            Role = "MANAGER",
+            Department = DepartmentConstants.Management,
+            Designation = DesignationConstants.DeliveryManager
         });
+
+        var now = DateTime.UtcNow;
+        _context.ResourceProfiles.Add(new ResourceProfile
+        {
+            UserId = result.UserId,
+            ResourceStatus = ResourceStatusConstants.Bench,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await _context.SaveChangesAsync();
+
         return result.UserId;
     }
 
-    private async Task<long> CreateTeamEmployeeAsync(long managerId, string username, bool hasAllocation)
+    private async Task<long> CreateTeamEmployeeAsync(long managerUserId, string username, bool hasAllocation)
     {
         var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
         {
@@ -99,12 +119,14 @@ public class EmployeeServiceTeamTests : IDisposable
             Email = $"{username}@techserve.com",
             Username = username,
             TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE"
+            Role = "EMPLOYEE",
+            Department = DepartmentConstants.SoftwareDevelopment,
+            Designation = DesignationConstants.SoftwareEngineer
         });
 
-        var employee = await _context.Employees.FirstAsync(e => e.UserId == result.UserId);
-        employee.ManagerId = managerId;
-        employee.UpdatedAt = DateTime.UtcNow;
+        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == result.UserId);
+        profile.ManagerId = managerUserId;
+        profile.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         if (hasAllocation)
@@ -112,12 +134,12 @@ public class EmployeeServiceTeamTests : IDisposable
             var now = DateTime.UtcNow;
             var project = new Project
             {
-                ProjectCode = $"PRJ-{employee.Id}",
+                ProjectCode = $"PRJ-{profile.Id}",
                 ProjectName = $"Project {username}",
                 StartDate = new DateOnly(2026, 1, 1),
                 EndDate = new DateOnly(2026, 12, 31),
                 ProjectStatus = "ACTIVE",
-                ManagerUserId = managerId,
+                ManagerUserId = managerUserId,
                 IsActive = true,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -127,20 +149,20 @@ public class EmployeeServiceTeamTests : IDisposable
 
             _context.ProjectAllocations.Add(new ProjectAllocation
             {
-                EmployeeId = employee.Id,
+                ResourceProfileId = profile.Id,
                 ProjectId = project.Id,
                 AllocationPercentage = 50,
                 AllocationStartDate = new DateOnly(2026, 3, 1),
                 AllocationEndDate = new DateOnly(2026, 12, 31),
                 AllocationStatus = AllocationStatusConstants.Active,
-                AllocatedByManagerId = managerId,
+                AllocatedByUserId = managerUserId,
                 CreatedAt = now,
                 UpdatedAt = now
             });
             await _context.SaveChangesAsync();
         }
 
-        return employee.Id;
+        return profile.Id;
     }
 
     public void Dispose()

@@ -25,22 +25,31 @@ public class ProjectServiceTests : IDisposable
             .Options;
 
         _context = new PrmDbContext(options);
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
 
         var userRepo = new UserRepository(_context);
         var projectRepo = new ProjectRepository(_context);
         var milestoneRepo = new MilestoneRepository(_context);
-        var auditRepo = new AuditLogRepository(_context);
 
         var auditService = TestServiceFactory.CreateAuditService(_context);
-        _userService = new UserService(_context, userRepo, new EmployeeRepository(_context), auditService, TestServiceFactory.CreateLogger<UserService>());
+        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
+        _userService = new UserService(
+            _context,
+            userRepo,
+            new EmployeeRepository(_context),
+            roleRepo,
+            auditService,
+            TestServiceFactory.CreateLogger<UserService>());
         _projectService = new ProjectService(
             projectRepo,
             milestoneRepo,
             userRepo,
+            roleRepo,
             new AllocationRepository(_context),
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
+            TestServiceFactory.CreateHealthThresholdProvider(_context),
             auditService,
             TestServiceFactory.CreateLogger<ProjectService>());
     }

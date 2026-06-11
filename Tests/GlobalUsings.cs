@@ -5,6 +5,7 @@ global using Server.Repositories.Scheduler;
 global using Server.Repositories.Shared;
 global using Server.Repositories.SystemConfig;
 global using Server.Repositories.Timesheets;
+global using Server.Repositories.Roles;
 global using Server.Repositories.Users;
 global using Server.Services.Allocations;
 global using Server.Services.Auth;

@@ -9,7 +9,7 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
 {
     public Task<bool> ExistsForWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default) =>
         context.Timesheets.AnyAsync(
-            t => t.EmployeeId == employeeId && t.WeekStartDate == weekStart,
+            t => t.ResourceProfileId == employeeId && t.WeekStartDate == weekStart,
             cancellationToken);
 
     public async Task<IReadOnlyList<long>> GetEmployeeIdsWithTimesheetForWeekAsync(
@@ -22,8 +22,8 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             return [];
 
         return await context.Timesheets
-            .Where(t => ids.Contains(t.EmployeeId) && t.WeekStartDate == weekStart)
-            .Select(t => t.EmployeeId)
+            .Where(t => ids.Contains(t.ResourceProfileId) && t.WeekStartDate == weekStart)
+            .Select(t => t.ResourceProfileId)
             .Distinct()
             .ToListAsync(cancellationToken);
     }
@@ -48,11 +48,11 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
         context.Timesheets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
 
     public Task<Timesheet?> GetByIdForEmployeeAsync(long id, long employeeId, CancellationToken cancellationToken = default) =>
-        context.Timesheets.FirstOrDefaultAsync(t => t.Id == id && t.EmployeeId == employeeId, cancellationToken);
+        context.Timesheets.FirstOrDefaultAsync(t => t.Id == id && t.ResourceProfileId == employeeId, cancellationToken);
 
     public async Task<IReadOnlyList<Timesheet>> GetByEmployeeAsync(long employeeId, CancellationToken cancellationToken = default) =>
         await context.Timesheets
-            .Where(t => t.EmployeeId == employeeId)
+            .Where(t => t.ResourceProfileId == employeeId)
             .OrderByDescending(t => t.WeekStartDate)
             .ToListAsync(cancellationToken);
 
@@ -66,7 +66,7 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             return [];
 
         return await context.Timesheets
-            .Where(t => ids.Contains(t.EmployeeId) && t.WeekStartDate == weekStart)
+            .Where(t => ids.Contains(t.ResourceProfileId) && t.WeekStartDate == weekStart)
             .ToListAsync(cancellationToken);
     }
 
@@ -116,14 +116,14 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             join lineItem in context.TimesheetLineItems on timesheet.Id equals lineItem.TimesheetId
             join tagLink in context.TimesheetLineItemActivityTags on lineItem.Id equals tagLink.TimesheetLineItemId
             join tag in context.ActivityTags on tagLink.ActivityTagId equals tag.Id
-            where ids.Contains(timesheet.EmployeeId)
+            where ids.Contains(timesheet.ResourceProfileId)
                   && timesheet.WeekStartDate >= sinceDate
                   && timesheet.Status == TimesheetConstants.StatusSubmitted
-            select new { timesheet.EmployeeId, TagName = tag.TagName }
+            select new { timesheet.ResourceProfileId, TagName = tag.TagName }
         ).Distinct().ToListAsync(cancellationToken);
 
         return rows
-            .GroupBy(r => r.EmployeeId)
+            .GroupBy(r => r.ResourceProfileId)
             .ToDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<string>)g.Select(r => r.TagName).Distinct().OrderBy(n => n).ToList());

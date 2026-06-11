@@ -6,6 +6,7 @@ using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Allocations;
 using Server.Models.Entities;
+using Server.Services.Employees;
 using Server.Services.Shared;
 
 namespace Server.Services.Allocations;
@@ -16,6 +17,7 @@ public class AllocationService(
     IEmployeeRepository employeeRepository,
     IUserRepository userRepository,
     IProjectRepository projectRepository,
+    IResourceStatusService resourceStatusService,
     IAuditService auditService,
     ILogger<AllocationService> logger) : IAllocationService
 {
@@ -30,7 +32,7 @@ public class AllocationService(
 
         foreach (var allocation in allocations)
         {
-            var employee = await employeeRepository.GetByIdAsync(allocation.EmployeeId, cancellationToken);
+            var employee = await employeeRepository.GetByIdAsync(allocation.ResourceProfileId, cancellationToken);
             var employeeName = string.Empty;
             if (employee is not null)
             {
@@ -96,13 +98,16 @@ public class AllocationService(
         CreateAllocationRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        var employee = await employeeRepository.GetByIdAsync(request.EmployeeId, cancellationToken)
+        var profile = await employeeRepository.GetByIdAsync(request.EmployeeId, cancellationToken)
             ?? throw new NotFoundAppException("Employee not found.");
 
-        if (!employee.IsActive)
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
+            ?? throw new NotFoundAppException("Linked user not found.");
+
+        if (!user.IsActive)
             throw new ValidationAppException("Employee is not active.");
 
-        if (employee.ManagerId != managerUserId)
+        if (profile.ManagerId != managerUserId)
             throw new ForbiddenAppException("Employee is not on your team.");
 
         var project = await projectRepository.GetByIdAsync(request.ProjectId, cancellationToken)
@@ -117,9 +122,6 @@ public class AllocationService(
 
         if (request.AllocationStartDate < project.StartDate || request.AllocationEndDate > project.EndDate)
             throw new ValidationAppException("Allocation dates must be within the project date range.");
-
-        var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
-            ?? throw new NotFoundAppException("Linked user not found.");
 
         var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(request.EmployeeId, cancellationToken);
         ValidateUtilization(
@@ -136,23 +138,21 @@ public class AllocationService(
         {
             var allocation = new ProjectAllocation
             {
-                EmployeeId = request.EmployeeId,
+                ResourceProfileId = request.EmployeeId,
                 ProjectId = request.ProjectId,
                 AllocationPercentage = request.AllocationPercentage,
                 AllocationStartDate = request.AllocationStartDate,
                 AllocationEndDate = request.AllocationEndDate,
                 AllocationStatus = AllocationStatusConstants.Active,
-                AllocatedByManagerId = managerUserId,
+                AllocatedByUserId = managerUserId,
                 CreatedAt = now,
                 UpdatedAt = now
             };
 
             await allocationRepository.AddAsync(allocation, cancellationToken);
             await allocationRepository.SaveChangesAsync(cancellationToken);
-
-            employee.EmploymentStatus = AllocationConstants.EmploymentStatusAllocated;
-            employee.UpdatedAt = now;
-            await employeeRepository.UpdateAsync(employee, cancellationToken);
+            await resourceStatusService.ApplyStatusFromActiveAllocationsAsync(profile.Id, cancellationToken);
+            await employeeRepository.SaveChangesAsync(cancellationToken);
 
             await auditService.LogCreateAsync(
                 managerUserId,
@@ -160,7 +160,7 @@ public class AllocationService(
                 allocation.Id,
                 new
                 {
-                    allocation.EmployeeId,
+                    allocation.ResourceProfileId,
                     allocation.ProjectId,
                     allocation.AllocationPercentage,
                     allocation.AllocationStartDate,
@@ -175,14 +175,16 @@ public class AllocationService(
                 "Allocation created. {EntityName} {EntityId} by {ActorUserId}",
                 AuditEntityConstants.ProjectAllocations, allocation.Id, managerUserId);
 
+            var updatedProfile = await employeeRepository.GetByIdAsync(profile.Id, cancellationToken);
+
             return new CreateAllocationResponseDto
             {
                 AllocationId = allocation.Id,
-                EmployeeId = allocation.EmployeeId,
+                EmployeeId = allocation.ResourceProfileId,
                 ProjectId = allocation.ProjectId,
                 AllocationPercentage = allocation.AllocationPercentage,
                 AllocationStatus = allocation.AllocationStatus,
-                EmploymentStatus = employee.EmploymentStatus
+                EmploymentStatus = updatedProfile?.ResourceStatus ?? ResourceStatusConstants.Bench
             };
         }
         catch
@@ -209,16 +211,16 @@ public class AllocationService(
         if (project.ManagerUserId != managerUserId)
             throw new ForbiddenAppException("You do not own this project.");
 
-        var employee = await employeeRepository.GetByIdAsync(allocation.EmployeeId, cancellationToken)
+        var profile = await employeeRepository.GetByIdAsync(allocation.ResourceProfileId, cancellationToken)
             ?? throw new NotFoundAppException("Employee not found.");
 
-        if (employee.ManagerId != managerUserId)
+        if (profile.ManagerId != managerUserId)
             throw new ForbiddenAppException("Employee is not on your team.");
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var now = DateTime.UtcNow;
         var oldStatus = allocation.AllocationStatus;
-        var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(allocation.EmployeeId, cancellationToken);
+        var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(allocation.ResourceProfileId, cancellationToken);
         var hasOtherActive = activeAllocations.Any(a => a.Id != allocation.Id);
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -228,13 +230,10 @@ public class AllocationService(
             allocation.AllocationStatus = AllocationStatusConstants.Ended;
             allocation.UpdatedAt = now;
             await allocationRepository.UpdateAsync(allocation, cancellationToken);
-
-            if (!hasOtherActive)
-            {
-                employee.EmploymentStatus = AllocationConstants.EmploymentStatusBench;
-                employee.UpdatedAt = now;
-                await employeeRepository.UpdateAsync(employee, cancellationToken);
-            }
+            await allocationRepository.SaveChangesAsync(cancellationToken);
+            await resourceStatusService.ApplyStatusFromActiveAllocationsAsync(profile.Id, cancellationToken);
+            await employeeRepository.SaveChangesAsync(cancellationToken);
+            var updatedProfileForAudit = await employeeRepository.GetByIdAsync(profile.Id, cancellationToken);
 
             await auditService.LogEndAsync(
                 managerUserId,
@@ -245,7 +244,7 @@ public class AllocationService(
                 {
                     allocationStatus = allocation.AllocationStatus,
                     allocation.AllocationEndDate,
-                    employee.EmploymentStatus
+                    resourceStatus = updatedProfileForAudit?.ResourceStatus
                 },
                 cancellationToken);
 
@@ -256,12 +255,123 @@ public class AllocationService(
                 "Allocation ended. {EntityName} {EntityId} by {ActorUserId}",
                 AuditEntityConstants.ProjectAllocations, allocation.Id, managerUserId);
 
+            var updatedProfile = await employeeRepository.GetByIdAsync(profile.Id, cancellationToken);
+
             return new EndAllocationResponseDto
             {
                 AllocationId = allocation.Id,
-                EmployeeId = allocation.EmployeeId,
-                EmploymentStatus = employee.EmploymentStatus,
+                EmployeeId = allocation.ResourceProfileId,
+                EmploymentStatus = updatedProfile?.ResourceStatus ?? ResourceStatusConstants.Bench,
                 AllocationEndDate = allocation.AllocationEndDate
+            };
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<UpdateAllocationResponseDto> UpdateAllocationAsync(
+        long managerUserId,
+        long allocationId,
+        UpdateAllocationRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        var allocation = await allocationRepository.GetByIdAsync(allocationId, cancellationToken)
+            ?? throw new NotFoundAppException("Allocation not found.");
+
+        if (!string.Equals(allocation.AllocationStatus, AllocationStatusConstants.Active, StringComparison.OrdinalIgnoreCase))
+            throw new ValidationAppException("Allocation is not active.");
+
+        var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken)
+            ?? throw new NotFoundAppException("Project not found.");
+
+        if (project.ManagerUserId != managerUserId)
+            throw new ForbiddenAppException("You do not own this project.");
+
+        var profile = await employeeRepository.GetByIdAsync(allocation.ResourceProfileId, cancellationToken)
+            ?? throw new NotFoundAppException("Employee not found.");
+
+        if (profile.ManagerId != managerUserId)
+            throw new ForbiddenAppException("Employee is not on your team.");
+
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
+            ?? throw new NotFoundAppException("Linked user not found.");
+
+        if (!user.IsActive)
+            throw new ValidationAppException("Employee is not active.");
+
+        var newPercentage = request.AllocationPercentage ?? allocation.AllocationPercentage;
+        var newStartDate = request.AllocationStartDate ?? allocation.AllocationStartDate;
+        var newEndDate = request.AllocationEndDate ?? allocation.AllocationEndDate;
+
+        if (newEndDate <= newStartDate)
+            throw new ValidationAppException("End date must be after start date.");
+
+        if (newStartDate < project.StartDate || newEndDate > project.EndDate)
+            throw new ValidationAppException("Allocation dates must be within the project date range.");
+
+        var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(allocation.ResourceProfileId, cancellationToken);
+        var otherActive = activeAllocations.Where(a => a.Id != allocation.Id).ToList();
+        ValidateUtilization(
+            user.FullName,
+            otherActive,
+            newStartDate,
+            newEndDate,
+            newPercentage);
+
+        var now = DateTime.UtcNow;
+        var oldValues = new
+        {
+            allocation.AllocationPercentage,
+            allocation.AllocationStartDate,
+            allocation.AllocationEndDate
+        };
+
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            allocation.AllocationPercentage = newPercentage;
+            allocation.AllocationStartDate = newStartDate;
+            allocation.AllocationEndDate = newEndDate;
+            allocation.UpdatedAt = now;
+            await allocationRepository.UpdateAsync(allocation, cancellationToken);
+            await allocationRepository.SaveChangesAsync(cancellationToken);
+            await resourceStatusService.ApplyStatusFromActiveAllocationsAsync(profile.Id, cancellationToken);
+            await employeeRepository.SaveChangesAsync(cancellationToken);
+
+            await auditService.LogUpdateAsync(
+                managerUserId,
+                AuditEntityConstants.ProjectAllocations,
+                allocation.Id,
+                oldValues,
+                new
+                {
+                    allocation.AllocationPercentage,
+                    allocation.AllocationStartDate,
+                    allocation.AllocationEndDate
+                },
+                cancellationToken);
+
+            await allocationRepository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Allocation updated. {EntityName} {EntityId} by {ActorUserId}",
+                AuditEntityConstants.ProjectAllocations, allocation.Id, managerUserId);
+
+            var updatedProfile = await employeeRepository.GetByIdAsync(profile.Id, cancellationToken);
+
+            return new UpdateAllocationResponseDto
+            {
+                AllocationId = allocation.Id,
+                EmployeeId = allocation.ResourceProfileId,
+                AllocationPercentage = allocation.AllocationPercentage,
+                AllocationStartDate = allocation.AllocationStartDate,
+                AllocationEndDate = allocation.AllocationEndDate,
+                AllocationStatus = allocation.AllocationStatus,
+                EmploymentStatus = updatedProfile?.ResourceStatus ?? ResourceStatusConstants.Bench
             };
         }
         catch

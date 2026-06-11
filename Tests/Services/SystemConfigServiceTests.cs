@@ -28,6 +28,7 @@ public class SystemConfigServiceTests : IDisposable
         var encryption = new ConfigEncryptionHelper(dataProtection);
         _systemConfigService = new SystemConfigService(
             new SystemConfigRepository(_context),
+            TestServiceFactory.CreateHealthThresholdProvider(_context),
             TestServiceFactory.CreateAuditService(_context),
             encryption,
             TestServiceFactory.CreateLogger<SystemConfigService>());
@@ -40,7 +41,19 @@ public class SystemConfigServiceTests : IDisposable
             new SystemConfiguration { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = "Gemini", UpdatedAt = now },
             new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "", UpdatedAt = now },
             new SystemConfiguration { ConfigKey = ConfigKeys.SchedulerIntervalHours, ConfigValue = "4", UpdatedAt = now },
-            new SystemConfiguration { ConfigKey = ConfigKeys.MaxWeeklyHours, ConfigValue = "40", UpdatedAt = now });
+            new SystemConfiguration { ConfigKey = ConfigKeys.MaxWeeklyHours, ConfigValue = "40", UpdatedAt = now },
+            new SystemConfiguration
+            {
+                ConfigKey = ConfigKeys.HealthLowHoursThreshold,
+                ConfigValue = HealthThresholdDefaults.LowHoursRatio.ToString("0.##"),
+                UpdatedAt = now
+            },
+            new SystemConfiguration
+            {
+                ConfigKey = ConfigKeys.HealthApproachingDeadlineDays,
+                ConfigValue = HealthThresholdDefaults.ApproachingDeadlineDays.ToString(),
+                UpdatedAt = now
+            });
         _context.SaveChanges();
     }
 

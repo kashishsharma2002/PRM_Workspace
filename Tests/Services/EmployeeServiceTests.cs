@@ -26,6 +26,7 @@ public class EmployeeServiceTests : IDisposable
             .Options;
 
         _context = new PrmDbContext(options);
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
 
         var userRepo = new UserRepository(_context);
         var employeeRepo = new EmployeeRepository(_context);
@@ -34,14 +35,22 @@ public class EmployeeServiceTests : IDisposable
         var allocationRepo = new AllocationRepository(_context);
         var projectRepo = new ProjectRepository(_context);
         var auditService = TestServiceFactory.CreateAuditService(_context);
+        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
 
-        _userService = new UserService(_context, userRepo, employeeRepo, auditService, TestServiceFactory.CreateLogger<UserService>());
+        _userService = new UserService(
+            _context,
+            userRepo,
+            employeeRepo,
+            roleRepo,
+            auditService,
+            TestServiceFactory.CreateLogger<UserService>());
         var timesheetRepo = new TimesheetRepository(_context);
 
         _employeeService = new EmployeeService(
             _context,
             employeeRepo,
             userRepo,
+            roleRepo,
             skillRepo,
             employeeSkillRepo,
             allocationRepo,
@@ -59,11 +68,13 @@ public class EmployeeServiceTests : IDisposable
             Email = $"{username}@techserve.com",
             Username = username,
             TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE"
+            Role = "EMPLOYEE",
+            Department = DepartmentConstants.SoftwareDevelopment,
+            Designation = DesignationConstants.SoftwareEngineer
         });
 
-        var employee = await _context.Employees.FirstAsync(e => e.UserId == result.UserId);
-        return (employee.Id, result.UserId);
+        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == result.UserId);
+        return (profile.Id, result.UserId);
     }
 
     private async Task<long> CreateManagerAsync(string username = "mgr.user")
@@ -74,15 +85,28 @@ public class EmployeeServiceTests : IDisposable
             Email = $"{username}@techserve.com",
             Username = username,
             TemporaryPassword = "Welcome1",
-            Role = "MANAGER"
+            Role = "MANAGER",
+            Department = DepartmentConstants.Management,
+            Designation = DesignationConstants.DeliveryManager
         });
+
+        var now = DateTime.UtcNow;
+        _context.ResourceProfiles.Add(new ResourceProfile
+        {
+            UserId = result.UserId,
+            ResourceStatus = ResourceStatusConstants.Bench,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await _context.SaveChangesAsync();
+
         return result.UserId;
     }
 
     [Fact]
     public async Task UpdateEmployeeAsync_UpdatesDepartmentAndDesignation()
     {
-        var (employeeId, _) = await CreateEmployeeAsync();
+        var (employeeId, userId) = await CreateEmployeeAsync();
 
         await _employeeService.UpdateEmployeeAsync(employeeId, new UpdateEmployeeRequestDto
         {
@@ -90,10 +114,10 @@ public class EmployeeServiceTests : IDisposable
             Designation = "Developer"
         });
 
-        var employee = await _context.Employees.FindAsync(employeeId);
-        Assert.NotNull(employee);
-        Assert.Equal("Backend", employee!.Department);
-        Assert.Equal("Developer", employee.Designation);
+        var user = await _context.Users.FindAsync(userId);
+        Assert.NotNull(user);
+        Assert.Equal("BACKEND", user!.Department);
+        Assert.Equal("DEVELOPER", user.Designation);
     }
 
     [Fact]
@@ -101,6 +125,7 @@ public class EmployeeServiceTests : IDisposable
     {
         var (employeeId, userId) = await CreateEmployeeAsync("deact.emp");
         var managerUserId = await CreateManagerAsync();
+        var managerProfile = await _context.ResourceProfiles.FirstAsync(p => p.UserId == managerUserId);
 
         var now = DateTime.UtcNow;
         var project = new Project
@@ -120,13 +145,13 @@ public class EmployeeServiceTests : IDisposable
 
         _context.ProjectAllocations.Add(new ProjectAllocation
         {
-            EmployeeId = employeeId,
+            ResourceProfileId = employeeId,
             ProjectId = project.Id,
             AllocationPercentage = 50,
             AllocationStartDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7)),
             AllocationEndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(3)),
             AllocationStatus = "ACTIVE",
-            AllocatedByManagerId = managerUserId,
+            AllocatedByUserId = managerUserId,
             CreatedAt = now,
             UpdatedAt = now
         });
@@ -134,14 +159,13 @@ public class EmployeeServiceTests : IDisposable
 
         await _employeeService.DeactivateEmployeeAsync(999, employeeId);
 
-        var employee = await _context.Employees.FindAsync(employeeId);
+        var profile = await _context.ResourceProfiles.FindAsync(employeeId);
         var user = await _context.Users.FindAsync(userId);
         var allocation = await _context.ProjectAllocations.FirstAsync();
         var audit = await _context.AuditLogs.FirstAsync(a => a.EntityName == AuditEntityConstants.Employees);
 
-        Assert.NotNull(employee);
-        Assert.False(employee!.IsActive);
-        Assert.Equal(AllocationConstants.EmploymentStatusBench, employee.EmploymentStatus);
+        Assert.NotNull(profile);
+        Assert.Equal(ResourceStatusConstants.Bench, profile!.ResourceStatus);
         Assert.NotNull(user);
         Assert.False(user!.IsActive);
         Assert.Equal(AllocationStatusConstants.Ended, allocation.AllocationStatus);
@@ -189,9 +213,9 @@ public class EmployeeServiceTests : IDisposable
             ManagerUserId = managerUserId
         });
 
-        var employee = await _context.Employees.FindAsync(employeeId);
-        Assert.NotNull(employee);
-        Assert.Equal(managerUserId, employee!.ManagerId);
+        var profile = await _context.ResourceProfiles.FindAsync(employeeId);
+        Assert.NotNull(profile);
+        Assert.Equal(managerUserId, profile!.ManagerId);
     }
 
     public void Dispose()

@@ -22,6 +22,4 @@ public static class ProjectConstants
     public const string FlagOverdueMilestone = "OVERDUE_MILESTONE";
     public const string FlagLowHours = "LOW_HOURS";
     public const string FlagApproachingDeadline = "APPROACHING_DEADLINE";
-    public const decimal LowHoursThreshold = 0.6m;
-    public const int ApproachingDeadlineDays = 28;
 }

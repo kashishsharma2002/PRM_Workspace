@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Server.Common;
 using Server.Common.Allocations;
+using Server.Common.Roles;
 using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
@@ -34,20 +35,24 @@ public class AllocationServiceTests : IDisposable
             new EmployeeRepository(_context),
             new UserRepository(_context),
             new ProjectRepository(_context),
+            TestServiceFactory.CreateResourceStatusService(_context),
             TestServiceFactory.CreateAuditService(_context),
             TestServiceFactory.CreateLogger<AllocationService>());
     }
 
     private (long ManagerUserId, long EmployeeId, long ProjectId) SeedData()
     {
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
         var now = DateTime.UtcNow;
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
+        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
+
         var manager = new User
         {
             Username = "ankit.shah",
             Email = "ankit@techserve.com",
             FullName = "Ankit Shah",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -60,7 +65,6 @@ public class AllocationServiceTests : IDisposable
             Email = "ravi@techserve.com",
             FullName = "Ravi Kumar",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -68,17 +72,30 @@ public class AllocationServiceTests : IDisposable
         _context.Users.Add(user);
         _context.SaveChanges();
 
-        var employee = new Employee
+        _context.UserRoles.AddRange(
+            new UserRole { UserId = manager.Id, RoleId = managerRole.Id, AssignedAt = now },
+            new UserRole { UserId = user.Id, RoleId = employeeRole.Id, AssignedAt = now });
+
+        var managerProfile = new ResourceProfile
         {
-            UserId = user.Id,
-            ManagerId = manager.Id,
-            EmployeeCode = "EMP-000001",
-            EmploymentStatus = AllocationConstants.EmploymentStatusBench,
-            IsActive = true,
+            UserId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
             CreatedAt = now,
             UpdatedAt = now
         };
-        _context.Employees.Add(employee);
+        _context.ResourceProfiles.Add(managerProfile);
+        _context.SaveChanges();
+
+        var employee = new ResourceProfile
+        {
+            UserId = user.Id,
+            ManagerId = manager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _context.ResourceProfiles.Add(employee);
+        _context.SaveChanges();
 
         var project = new Project
         {
@@ -97,13 +114,13 @@ public class AllocationServiceTests : IDisposable
 
         _context.ProjectAllocations.Add(new ProjectAllocation
         {
-            EmployeeId = employee.Id,
+            ResourceProfileId = employee.Id,
             ProjectId = project.Id,
             AllocationPercentage = 50,
             AllocationStartDate = new DateOnly(2026, 3, 1),
             AllocationEndDate = new DateOnly(2026, 6, 30),
             AllocationStatus = AllocationStatusConstants.Active,
-            AllocatedByManagerId = manager.Id,
+            AllocatedByUserId = manager.Id,
             CreatedAt = now,
             UpdatedAt = now
         });
@@ -127,13 +144,15 @@ public class AllocationServiceTests : IDisposable
     public async Task CreateAllocationAsync_Success_SetsEmployeeAllocated()
     {
         var now = DateTime.UtcNow;
+        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
+        var managerUserId = _managerUserId;
+
         var benchUser = new User
         {
             Username = "priya.sharma",
             Email = "priya@techserve.com",
             FullName = "Priya Sharma",
             PasswordHash = "hash",
-            Role = "EMPLOYEE",
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -141,17 +160,22 @@ public class AllocationServiceTests : IDisposable
         _context.Users.Add(benchUser);
         await _context.SaveChangesAsync();
 
-        var benchEmployee = new Employee
+        _context.UserRoles.Add(new UserRole
         {
             UserId = benchUser.Id,
-            ManagerId = _managerUserId,
-            EmployeeCode = "EMP-000002",
-            EmploymentStatus = AllocationConstants.EmploymentStatusBench,
-            IsActive = true,
+            RoleId = employeeRole.Id,
+            AssignedAt = now
+        });
+
+        var benchEmployee = new ResourceProfile
+        {
+            UserId = benchUser.Id,
+            ManagerId = managerUserId,
+            ResourceStatus = ResourceStatusConstants.Bench,
             CreatedAt = now,
             UpdatedAt = now
         };
-        _context.Employees.Add(benchEmployee);
+        _context.ResourceProfiles.Add(benchEmployee);
         await _context.SaveChangesAsync();
 
         var request = new CreateAllocationRequestDto
@@ -166,10 +190,10 @@ public class AllocationServiceTests : IDisposable
         var result = await _allocationService.CreateAllocationAsync(_managerUserId, request);
 
         Assert.True(result.AllocationId > 0);
-        Assert.Equal(AllocationConstants.EmploymentStatusAllocated, result.EmploymentStatus);
+        Assert.Equal(AllocationConstants.EmploymentStatusPartiallyAllocated, result.EmploymentStatus);
 
-        var employee = await _context.Employees.FindAsync(benchEmployee.Id);
-        Assert.Equal(AllocationConstants.EmploymentStatusAllocated, employee!.EmploymentStatus);
+        var profile = await _context.ResourceProfiles.FindAsync(benchEmployee.Id);
+        Assert.Equal(ResourceStatusConstants.PartiallyAllocated, profile!.ResourceStatus);
     }
 
     [Fact]
@@ -194,18 +218,34 @@ public class AllocationServiceTests : IDisposable
     [Fact]
     public async Task CreateAllocationAsync_NotManagerTeam_Throws()
     {
+        var now = DateTime.UtcNow;
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
         var otherManager = new User
         {
             Username = "other.mgr",
             Email = "other@techserve.com",
             FullName = "Other Manager",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
         _context.Users.Add(otherManager);
+        await _context.SaveChangesAsync();
+
+        _context.UserRoles.Add(new UserRole
+        {
+            UserId = otherManager.Id,
+            RoleId = managerRole.Id,
+            AssignedAt = now
+        });
+        _context.ResourceProfiles.Add(new ResourceProfile
+        {
+            UserId = otherManager.Id,
+            ResourceStatus = ResourceStatusConstants.Bench,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
         await _context.SaveChangesAsync();
 
         var request = new CreateAllocationRequestDto
@@ -231,25 +271,34 @@ public class AllocationServiceTests : IDisposable
         Assert.Equal(AllocationStatusConstants.Ended, endedAllocation!.AllocationStatus);
         Assert.Equal(AllocationConstants.EmploymentStatusBench, result.EmploymentStatus);
 
-        var employee = await _context.Employees.FindAsync(_employeeId);
-        Assert.Equal(AllocationConstants.EmploymentStatusBench, employee!.EmploymentStatus);
+        var profile = await _context.ResourceProfiles.FindAsync(_employeeId);
+        Assert.Equal(ResourceStatusConstants.Bench, profile!.ResourceStatus);
     }
 
     [Fact]
     public async Task EndAllocationAsync_NotProjectOwner_Throws()
     {
+        var now = DateTime.UtcNow;
+        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
         var otherManager = new User
         {
             Username = "other.mgr2",
             Email = "other2@techserve.com",
             FullName = "Other Manager 2",
             PasswordHash = "hash",
-            Role = "MANAGER",
             IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
         _context.Users.Add(otherManager);
+        await _context.SaveChangesAsync();
+
+        _context.UserRoles.Add(new UserRole
+        {
+            UserId = otherManager.Id,
+            RoleId = managerRole.Id,
+            AssignedAt = now
+        });
         await _context.SaveChangesAsync();
 
         var allocation = await _context.ProjectAllocations.FirstAsync();

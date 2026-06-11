@@ -12,13 +12,16 @@ internal static class ManagerTeamEmployeePicker
     {
         while (true)
         {
-            Console.Write($"Enter Employee ID (enter {ShowTeamListOption} to view all employees under you): ");
+            Console.Write($"Enter Employee ID (enter {ShowTeamListOption} to view all employees under you, B to go back): ");
             var input = Console.ReadLine()?.Trim();
+
+            if (string.Equals(input, "B", StringComparison.OrdinalIgnoreCase))
+                return null;
 
             if (!long.TryParse(input, out var enteredValue))
             {
                 ConsoleHelper.PrintError("Invalid employee ID.");
-                return null;
+                continue;
             }
 
             if (enteredValue == ShowTeamListOption)
@@ -30,7 +33,7 @@ internal static class ManagerTeamEmployeePicker
             if (enteredValue < 1)
             {
                 ConsoleHelper.PrintError("Invalid employee ID.");
-                return null;
+                continue;
             }
 
             return enteredValue;

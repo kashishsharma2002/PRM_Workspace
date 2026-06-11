@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -26,19 +27,25 @@ public static class UpdateEmployeeScreen
             }
 
             Console.WriteLine($"Employee: {detail.FullName} ({detail.EmployeeCode})");
-            Console.WriteLine($"Current Department : {detail.Department ?? "-"}");
-            Console.WriteLine($"Current Designation: {detail.Designation ?? "-"}");
+            Console.WriteLine($"Current Department : {FormatDepartment(detail.Department)}");
+            Console.WriteLine($"Current Designation: {FormatDesignation(detail.Designation)}");
             Console.WriteLine();
 
-            Console.Write("New Department (blank to keep): ");
-            var department = Console.ReadLine()?.Trim();
+            Console.WriteLine("New Department:");
+            var department = OptionPickerHelper.PickFromList(
+                string.Empty, PrependKeepOption(DepartmentConstants.EmployeeOptions), FormatDepartmentPick);
+            if (department == KeepCurrent)
+                department = null;
 
-            Console.Write("New Designation (blank to keep): ");
-            var designation = Console.ReadLine()?.Trim();
+            Console.WriteLine("New Designation:");
+            var designation = OptionPickerHelper.PickFromList(
+                string.Empty, PrependKeepOption(DesignationConstants.EmployeeOptions), FormatDesignationPick);
+            if (designation == KeepCurrent)
+                designation = null;
 
-            if (string.IsNullOrWhiteSpace(department) && string.IsNullOrWhiteSpace(designation))
+            if (department is null && designation is null)
             {
-                ConsoleHelper.PrintError("At least one field must be provided.");
+                ConsoleHelper.PrintError("At least one field must be changed.");
                 return;
             }
 
@@ -51,8 +58,8 @@ public static class UpdateEmployeeScreen
                 $"/api/employees/{employeeId}",
                 new UpdateEmployeeRequest
                 {
-                    Department = string.IsNullOrWhiteSpace(department) ? null : department,
-                    Designation = string.IsNullOrWhiteSpace(designation) ? null : designation
+                    Department = department,
+                    Designation = designation
                 },
                 requireAuth: true);
 
@@ -67,4 +74,21 @@ public static class UpdateEmployeeScreen
             ErrorDisplayHelper.HandleException(ex);
         }
     }
+
+    private const string KeepCurrent = "__KEEP__";
+
+    private static string[] PrependKeepOption(string[] options) =>
+        [KeepCurrent, ..options];
+
+    private static string FormatDepartment(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : DepartmentConstants.GetDisplayName(value);
+
+    private static string FormatDesignation(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : DesignationConstants.GetDisplayName(value);
+
+    private static string FormatDepartmentPick(string value) =>
+        value == KeepCurrent ? "Keep current" : FormatDepartment(value);
+
+    private static string FormatDesignationPick(string value) =>
+        value == KeepCurrent ? "Keep current" : FormatDesignation(value);
 }

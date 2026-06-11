@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Server.Common;
 using Server.Common.Audit;
+using Server.Common.Timesheets;
 using Server.Exceptions;
 using Server.Models.DTOs.SystemConfig;
 using Server.Services.Shared;
@@ -9,6 +10,7 @@ namespace Server.Services.SystemConfig;
 
 public class SystemConfigService(
     ISystemConfigRepository systemConfigRepository,
+    IHealthThresholdProvider healthThresholdProvider,
     IAuditService auditService,
     ConfigEncryptionHelper encryptionHelper,
     ILogger<SystemConfigService> logger) : ISystemConfigService
@@ -19,16 +21,23 @@ public class SystemConfigService(
     {
         var configs = await systemConfigRepository.GetAllAsync(cancellationToken);
         var dict = configs.ToDictionary(c => c.ConfigKey, c => c.ConfigValue);
+        var thresholds = await healthThresholdProvider.GetThresholdsAsync(cancellationToken);
 
         var apiKey = dict.GetValueOrDefault(ConfigKeys.LlmApiKey, string.Empty);
         var hasKey = !string.IsNullOrWhiteSpace(apiKey);
 
         return new SystemConfigResponseDto
         {
-            LlmProvider = dict.GetValueOrDefault(ConfigKeys.LlmProvider, "Gemini"),
+            LlmProvider = dict.GetValueOrDefault(ConfigKeys.LlmProvider, LlmProviders.Gemini),
             LlmApiKeyMasked = hasKey ? MaskedApiKey : string.Empty,
-            SchedulerIntervalHours = int.TryParse(dict.GetValueOrDefault(ConfigKeys.SchedulerIntervalHours, "4"), out var interval) ? interval : 4,
-            MaxWeeklyHours = int.TryParse(dict.GetValueOrDefault(ConfigKeys.MaxWeeklyHours, "40"), out var hours) ? hours : 40
+            SchedulerIntervalHours = ParseIntOrDefault(
+                dict.GetValueOrDefault(ConfigKeys.SchedulerIntervalHours),
+                SchedulerDefaults.IntervalHours),
+            MaxWeeklyHours = ParseIntOrDefault(
+                dict.GetValueOrDefault(ConfigKeys.MaxWeeklyHours),
+                (int)TimesheetDefaults.DefaultMaxWeeklyHours),
+            HealthLowHoursThreshold = thresholds.LowHoursThreshold,
+            HealthApproachingDeadlineDays = thresholds.ApproachingDeadlineDays
         };
     }
 
@@ -52,6 +61,24 @@ public class SystemConfigService(
         if (request.MaxWeeklyHours.HasValue)
             await UpdateKeyAsync(ConfigKeys.MaxWeeklyHours, request.MaxWeeklyHours.Value.ToString(), actorUserId, now, updatedKeys, cancellationToken);
 
+        if (request.HealthLowHoursThreshold.HasValue)
+            await UpdateKeyAsync(
+                ConfigKeys.HealthLowHoursThreshold,
+                request.HealthLowHoursThreshold.Value.ToString("0.##"),
+                actorUserId,
+                now,
+                updatedKeys,
+                cancellationToken);
+
+        if (request.HealthApproachingDeadlineDays.HasValue)
+            await UpdateKeyAsync(
+                ConfigKeys.HealthApproachingDeadlineDays,
+                request.HealthApproachingDeadlineDays.Value.ToString(),
+                actorUserId,
+                now,
+                updatedKeys,
+                cancellationToken);
+
         if (updatedKeys.Count == 0)
             throw new ValidationAppException("At least one setting must be provided.");
 
@@ -60,7 +87,7 @@ public class SystemConfigService(
             AuditEntityConstants.SystemConfigurations,
             0,
             null,
-            new { updatedKeys, llm_api_key = "***REDACTED***" },
+            new { updatedKeys, llm_api_key = AuditRedactionConstants.RedactedSecret },
             cancellationToken);
 
         await systemConfigRepository.SaveChangesAsync(cancellationToken);
@@ -88,4 +115,7 @@ public class SystemConfigService(
         await systemConfigRepository.UpdateAsync(config, cancellationToken);
         updatedKeys.Add(key);
     }
+
+    private static int ParseIntOrDefault(string? value, int defaultValue) =>
+        int.TryParse(value, out var parsed) ? parsed : defaultValue;
 }

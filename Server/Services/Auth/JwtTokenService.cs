@@ -13,23 +13,23 @@ public class JwtTokenService(IOptions<JwtSettings> jwtOptions) : IJwtTokenServic
 {
     private readonly JwtSettings _settings = jwtOptions.Value;
 
-    public LoginResponseDto CreateToken(User user, Employee? employee)
+    public LoginResponseDto CreateToken(User user, string primaryRole, ResourceProfile? resourceProfile)
     {
         var expiresAt = DateTime.UtcNow.AddHours(_settings.ExpiryHours);
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new("role", user.Role),
+            new("role", primaryRole),
             new(JwtRegisteredClaimNames.Name, user.FullName),
-            new("force_password_change", user.ForcePasswordChange.ToString().ToLowerInvariant())
+            new("force_password_change", user.IsTemporaryPassword.ToString().ToLowerInvariant())
         };
 
-        if (employee is not null)
+        if (resourceProfile is not null)
         {
-            claims.Add(new Claim("employee_id", employee.Id.ToString()));
+            claims.Add(new Claim("employee_id", resourceProfile.Id.ToString()));
 
-            if (employee.ManagerId.HasValue)
-                claims.Add(new Claim("manager_id", employee.ManagerId.Value.ToString()));
+            if (resourceProfile.ManagerId.HasValue)
+                claims.Add(new Claim("manager_id", resourceProfile.ManagerId.Value.ToString()));
         }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SecretKey));
@@ -47,11 +47,11 @@ public class JwtTokenService(IOptions<JwtSettings> jwtOptions) : IJwtTokenServic
             Token = new JwtSecurityTokenHandler().WriteToken(token),
             ExpiresAt = expiresAt,
             UserId = user.Id,
-            EmployeeId = employee?.Id,
-            ManagerId = employee?.ManagerId,
-            Role = user.Role,
+            EmployeeId = resourceProfile?.Id,
+            ManagerId = resourceProfile?.ManagerId,
+            Role = primaryRole,
             FullName = user.FullName,
-            ForcePasswordChange = user.ForcePasswordChange
+            ForcePasswordChange = user.IsTemporaryPassword
         };
     }
 }

@@ -8,4 +8,9 @@ public interface IAllocationService
     Task<EmployeeAllocationListResponseDto> GetMyAllocationsAsync(long employeeId, CancellationToken cancellationToken = default);
     Task<CreateAllocationResponseDto> CreateAllocationAsync(long managerUserId, CreateAllocationRequestDto request, CancellationToken cancellationToken = default);
     Task<EndAllocationResponseDto> EndAllocationAsync(long managerUserId, long allocationId, CancellationToken cancellationToken = default);
+    Task<UpdateAllocationResponseDto> UpdateAllocationAsync(
+        long managerUserId,
+        long allocationId,
+        UpdateAllocationRequestDto request,
+        CancellationToken cancellationToken = default);
 }

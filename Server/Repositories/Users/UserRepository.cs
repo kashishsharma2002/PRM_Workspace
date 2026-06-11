@@ -33,8 +33,8 @@ public class UserRepository(PrmDbContext context) : IUserRepository
             u => u.Username == username || u.Email == email,
             cancellationToken);
 
-    public Task<Employee?> GetEmployeeByUserIdAsync(long userId, CancellationToken cancellationToken = default) =>
-        context.Employees.FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
+    public Task<ResourceProfile?> GetResourceProfileByUserIdAsync(long userId, CancellationToken cancellationToken = default) =>
+        context.ResourceProfiles.FirstOrDefaultAsync(r => r.UserId == userId, cancellationToken);
 
     public async Task AddAsync(User user, CancellationToken cancellationToken = default)
     {

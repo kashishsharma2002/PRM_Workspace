@@ -63,7 +63,6 @@ public static class EmployeeMenuScreen
         }
         catch
         {
-            // Reminder is optional UX; do not block menu if endpoint fails.
         }
     }
 }

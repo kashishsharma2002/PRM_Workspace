@@ -6,44 +6,55 @@ namespace Server.Repositories.Employees;
 
 public class EmployeeRepository(PrmDbContext context) : IEmployeeRepository
 {
-    public Task<Employee?> GetByUserIdAsync(long userId, CancellationToken cancellationToken = default) =>
-        context.Employees.FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
+    public Task<ResourceProfile?> GetByUserIdAsync(long userId, CancellationToken cancellationToken = default) =>
+        context.ResourceProfiles.FirstOrDefaultAsync(r => r.UserId == userId, cancellationToken);
 
-    public Task<Employee?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.Employees.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
+    public Task<ResourceProfile?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
+        context.ResourceProfiles.FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
 
-    public async Task<IReadOnlyList<Employee>> GetAllAsync(
-        string? employmentStatus,
+    public async Task<IReadOnlyList<ResourceProfile>> GetAllAsync(
+        string? resourceStatus,
         string? department,
         CancellationToken cancellationToken = default)
     {
-        var query = context.Employees.AsQueryable();
+        var query = context.ResourceProfiles.AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(employmentStatus))
-            query = query.Where(e => e.EmploymentStatus == employmentStatus.Trim().ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(resourceStatus))
+            query = query.Where(r => r.ResourceStatus == resourceStatus.Trim().ToUpperInvariant());
 
         if (!string.IsNullOrWhiteSpace(department))
-            query = query.Where(e => e.Department != null && e.Department == department.Trim());
+        {
+            var dept = department.Trim().ToUpperInvariant();
+            query = query.Where(r =>
+                context.Users.Any(u => u.Id == r.UserId && u.Department == dept));
+        }
 
-        return await query.OrderBy(e => e.Id).ToListAsync(cancellationToken);
+        return await query.OrderBy(r => r.Id).ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Employee>> GetByManagerIdAsync(
-        long managerUserId,
+    public async Task<IReadOnlyList<ResourceProfile>> GetByManagerIdAsync(
+        long managerId,
         CancellationToken cancellationToken = default) =>
-        await context.Employees
-            .Where(e => e.ManagerId == managerUserId && e.IsActive)
-            .OrderBy(e => e.Id)
+        await context.ResourceProfiles
+            .Where(r => r.ManagerId == managerId)
+            .Join(
+                context.Users,
+                r => r.UserId,
+                u => u.Id,
+                (r, u) => new { Profile = r, User = u })
+            .Where(x => x.User.IsActive)
+            .Select(x => x.Profile)
+            .OrderBy(r => r.Id)
             .ToListAsync(cancellationToken);
 
-    public async Task AddAsync(Employee employee, CancellationToken cancellationToken = default)
+    public async Task AddAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default)
     {
-        await context.Employees.AddAsync(employee, cancellationToken);
+        await context.ResourceProfiles.AddAsync(resourceProfile, cancellationToken);
     }
 
-    public Task UpdateAsync(Employee employee, CancellationToken cancellationToken = default)
+    public Task UpdateAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default)
     {
-        context.Employees.Update(employee);
+        context.ResourceProfiles.Update(resourceProfile);
         return Task.CompletedTask;
     }
 

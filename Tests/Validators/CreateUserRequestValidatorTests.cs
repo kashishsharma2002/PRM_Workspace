@@ -1,3 +1,4 @@
+using Server.Common;
 using Server.Models.DTOs.Users;
 
 namespace Tests;
@@ -15,7 +16,9 @@ public class CreateUserRequestValidatorTests
             Email = "priya.sharma@techserve.com",
             Username = "priya.sharma",
             TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE"
+            Role = "EMPLOYEE",
+            Department = DepartmentConstants.SoftwareDevelopment,
+            Designation = DesignationConstants.SoftwareEngineer
         });
 
         Assert.True(result.IsValid);

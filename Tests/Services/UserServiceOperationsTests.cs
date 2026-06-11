@@ -20,10 +20,13 @@ public class UserServiceOperationsTests : IDisposable
             .Options;
 
         _context = new PrmDbContext(options);
+        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+
         _userService = new UserService(
             _context,
             new UserRepository(_context),
             new EmployeeRepository(_context),
+            TestServiceFactory.CreateRoleRepository(_context),
             TestServiceFactory.CreateAuditService(_context),
             TestServiceFactory.CreateLogger<UserService>());
     }
@@ -49,11 +52,11 @@ public class UserServiceOperationsTests : IDisposable
         await _userService.DeactivateUserAsync(999, userId);
 
         var user = await _context.Users.FindAsync(userId);
-        var employee = await _context.Employees.FirstAsync(e => e.UserId == userId);
+        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == userId);
 
         Assert.NotNull(user);
         Assert.False(user!.IsActive);
-        Assert.False(employee.IsActive);
+        Assert.Equal("BENCH", profile.ResourceStatus);
     }
 
     [Fact]
@@ -74,11 +77,11 @@ public class UserServiceOperationsTests : IDisposable
         await _userService.ReactivateUserAsync(999, userId);
 
         var user = await _context.Users.FindAsync(userId);
-        var employee = await _context.Employees.FirstAsync(e => e.UserId == userId);
+        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == userId);
 
         Assert.NotNull(user);
         Assert.True(user!.IsActive);
-        Assert.True(employee.IsActive);
+        Assert.Equal("BENCH", profile.ResourceStatus);
     }
 
     [Fact]
@@ -93,7 +96,7 @@ public class UserServiceOperationsTests : IDisposable
 
         var user = await _context.Users.FindAsync(userId);
         Assert.NotNull(user);
-        Assert.True(user!.ForcePasswordChange);
+        Assert.True(user!.IsTemporaryPassword);
         Assert.True(BCrypt.Net.BCrypt.Verify("NewPass99", user.PasswordHash));
     }
 

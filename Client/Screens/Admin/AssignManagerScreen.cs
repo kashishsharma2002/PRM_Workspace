@@ -53,7 +53,7 @@ public static class AssignManagerScreen
                 Console.WriteLine("\n[NOTE] This employee is inactive and will not appear on the manager's dashboard.");
 
             ConsoleHelper.PrintDivider();
-            Console.WriteLine($"Employee : {employee.FullName} (User ID {employee.UserId}, Emp ID {employee.Id})");
+            Console.WriteLine($"Employee : {employee.FullName} (User ID {employee.UserId}, Resource Profile ID {employee.Id})");
             Console.WriteLine($"Manager  : {manager.FullName} (User ID {manager.Id})");
             ConsoleHelper.PrintDivider();
             Console.Write("[S] Save  [B] Back — choice: ");

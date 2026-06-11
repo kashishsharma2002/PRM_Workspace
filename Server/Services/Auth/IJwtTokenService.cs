@@ -5,5 +5,5 @@ namespace Server.Services.Auth;
 
 public interface IJwtTokenService
 {
-    LoginResponseDto CreateToken(User user, Employee? employee);
+    LoginResponseDto CreateToken(User user, string primaryRole, ResourceProfile? resourceProfile);
 }

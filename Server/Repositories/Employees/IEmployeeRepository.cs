@@ -4,11 +4,11 @@ namespace Server.Repositories.Employees;
 
 public interface IEmployeeRepository
 {
-    Task<Employee?> GetByUserIdAsync(long userId, CancellationToken cancellationToken = default);
-    Task<Employee?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<Employee>> GetAllAsync(string? employmentStatus, string? department, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<Employee>> GetByManagerIdAsync(long managerUserId, CancellationToken cancellationToken = default);
-    Task AddAsync(Employee employee, CancellationToken cancellationToken = default);
-    Task UpdateAsync(Employee employee, CancellationToken cancellationToken = default);
+    Task<ResourceProfile?> GetByUserIdAsync(long userId, CancellationToken cancellationToken = default);
+    Task<ResourceProfile?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ResourceProfile>> GetAllAsync(string? resourceStatus, string? department, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ResourceProfile>> GetByManagerIdAsync(long managerId, CancellationToken cancellationToken = default);
+    Task AddAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default);
+    Task UpdateAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

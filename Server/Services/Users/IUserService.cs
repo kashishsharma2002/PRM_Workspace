@@ -26,4 +26,16 @@ public interface IUserService
         long actorUserId,
         long userId,
         CancellationToken cancellationToken = default);
+
+    Task UpdateUserAsync(
+        long actorUserId,
+        long userId,
+        UpdateUserRequestDto request,
+        CancellationToken cancellationToken = default);
+
+    Task UpdateUserRoleAsync(
+        long actorUserId,
+        long userId,
+        UpdateUserRoleRequestDto request,
+        CancellationToken cancellationToken = default);
 }

@@ -3,10 +3,12 @@ using Microsoft.Extensions.Logging;
 using Server.Common;
 using Server.Common.Audit;
 using Server.Common.Errors;
+using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Users;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
 using Server.Services.Shared;
 
 namespace Server.Services.Users;
@@ -15,6 +17,7 @@ public class UserService(
     PrmDbContext context,
     IUserRepository userRepository,
     IEmployeeRepository employeeRepository,
+    IRoleRepository roleRepository,
     IAuditService auditService,
     ILogger<UserService> logger) : IUserService
 {
@@ -30,19 +33,25 @@ public class UserService(
         if (await userRepository.ExistsByUsernameOrEmailAsync(username, email, cancellationToken))
             throw new ConflictAppException("Username or email already exists.");
 
+        var roleEntity = await roleRepository.GetByNameAsync(role, cancellationToken)
+            ?? throw new ValidationAppException("Invalid role.");
+
         var now = DateTime.UtcNow;
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         try
         {
+            var (department, designation) = ResolveDepartmentAndDesignation(role, request);
+
             var user = new User
             {
                 Username = username,
                 Email = email,
                 FullName = request.FullName.Trim(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.TemporaryPassword),
-                Role = role,
-                ForcePasswordChange = true,
+                Department = department,
+                Designation = designation,
+                IsTemporaryPassword = true,
                 IsActive = true,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -51,23 +60,30 @@ public class UserService(
             await userRepository.AddAsync(user, cancellationToken);
             await userRepository.SaveChangesAsync(cancellationToken);
 
-            var employee = new Employee
-            {
-                UserId = user.Id,
-                EmployeeCode = $"EMP-{user.Id:D6}",
-                EmploymentStatus = AllocationConstants.EmploymentStatusBench,
-                IsActive = true,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
+            await roleRepository.AssignRoleAsync(user.Id, roleEntity.Id, actorUserId, cancellationToken);
+            await roleRepository.SaveChangesAsync(cancellationToken);
 
-            await employeeRepository.AddAsync(employee, cancellationToken);
+            long? resourceProfileId = null;
+            if (role is RoleConstants.Employee)
+            {
+                var profile = new ResourceProfile
+                {
+                    UserId = user.Id,
+                    ResourceStatus = ResourceStatusConstants.Bench,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                await employeeRepository.AddAsync(profile, cancellationToken);
+                await employeeRepository.SaveChangesAsync(cancellationToken);
+                resourceProfileId = profile.Id;
+            }
 
             await auditService.LogCreateAsync(
                 actorUserId,
                 AuditEntityConstants.Users,
                 user.Id,
-                new { user.Username, user.Email, user.Role, employee.EmployeeCode },
+                new { user.Username, user.Email, Role = role, ResourceProfileId = resourceProfileId },
                 cancellationToken);
 
             await userRepository.SaveChangesAsync(cancellationToken);
@@ -80,8 +96,8 @@ public class UserService(
             return new CreateUserResponseDto
             {
                 UserId = user.Id,
-                EmployeeId = employee.Id,
-                EmployeeCode = employee.EmployeeCode
+                EmployeeId = resourceProfileId ?? 0,
+                EmployeeCode = resourceProfileId.HasValue ? $"EMP-{user.Id:D6}" : string.Empty
             };
         }
         catch
@@ -94,15 +110,21 @@ public class UserService(
     public async Task<UserListResponseDto> GetAllUsersAsync(CancellationToken cancellationToken = default)
     {
         var users = await userRepository.GetAllAsync(cancellationToken);
-        var items = users.Select(u => new UserListItemDto
+        var items = new List<UserListItemDto>();
+
+        foreach (var user in users)
         {
-            Id = u.Id,
-            Username = u.Username,
-            FullName = u.FullName,
-            Email = u.Email,
-            Role = u.Role,
-            IsActive = u.IsActive
-        }).ToList();
+            var role = await roleRepository.GetRoleNameForUserAsync(user.Id, cancellationToken) ?? string.Empty;
+            items.Add(new UserListItemDto
+            {
+                Id = user.Id,
+                Username = user.Username,
+                FullName = user.FullName,
+                Email = user.Email,
+                Role = role,
+                IsActive = user.IsActive
+            });
+        }
 
         return new UserListResponseDto
         {
@@ -123,7 +145,7 @@ public class UserService(
         var now = DateTime.UtcNow;
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewTemporaryPassword);
-        user.ForcePasswordChange = true;
+        user.IsTemporaryPassword = true;
         user.UpdatedAt = now;
 
         await userRepository.UpdateAsync(user, cancellationToken);
@@ -161,12 +183,12 @@ public class UserService(
 
         await userRepository.UpdateAsync(user, cancellationToken);
 
-        var employee = await employeeRepository.GetByUserIdAsync(user.Id, cancellationToken);
-        if (employee is not null)
+        var profile = await employeeRepository.GetByUserIdAsync(user.Id, cancellationToken);
+        if (profile is not null)
         {
-            employee.IsActive = false;
-            employee.UpdatedAt = now;
-            await employeeRepository.UpdateAsync(employee, cancellationToken);
+            profile.ResourceStatus = ResourceStatusConstants.Bench;
+            profile.UpdatedAt = now;
+            await employeeRepository.UpdateAsync(profile, cancellationToken);
         }
 
         await auditService.LogDeactivateAsync(
@@ -199,12 +221,11 @@ public class UserService(
 
         await userRepository.UpdateAsync(user, cancellationToken);
 
-        var employee = await employeeRepository.GetByUserIdAsync(user.Id, cancellationToken);
-        if (employee is not null)
+        var profile = await employeeRepository.GetByUserIdAsync(user.Id, cancellationToken);
+        if (profile is not null)
         {
-            employee.IsActive = true;
-            employee.UpdatedAt = now;
-            await employeeRepository.UpdateAsync(employee, cancellationToken);
+            profile.UpdatedAt = now;
+            await employeeRepository.UpdateAsync(profile, cancellationToken);
         }
 
         await auditService.LogUpdateAsync(
@@ -222,9 +243,130 @@ public class UserService(
             AuditEntityConstants.Users, user.Id, actorUserId);
     }
 
+    public async Task UpdateUserAsync(
+        long actorUserId,
+        long userId,
+        UpdateUserRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await GetUserOrThrowAsync(userId, cancellationToken);
+        var email = request.Email.Trim();
+        var fullName = request.FullName.Trim();
+
+        var existingWithEmail = await userRepository.GetByEmailAsync(email, cancellationToken);
+        if (existingWithEmail is not null && existingWithEmail.Id != userId)
+            throw new ConflictAppException("Email is already in use.");
+
+        var now = DateTime.UtcNow;
+        var oldValues = new { user.FullName, user.Email };
+
+        user.FullName = fullName;
+        user.Email = email;
+        user.UpdatedAt = now;
+
+        await userRepository.UpdateAsync(user, cancellationToken);
+
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.Users,
+            user.Id,
+            oldValues,
+            new { user.FullName, user.Email },
+            cancellationToken);
+
+        await userRepository.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "User updated. {EntityName} {EntityId} by {ActorUserId}",
+            AuditEntityConstants.Users, user.Id, actorUserId);
+    }
+
+    public async Task UpdateUserRoleAsync(
+        long actorUserId,
+        long userId,
+        UpdateUserRoleRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (actorUserId == userId)
+            throw new ForbiddenAppException("You cannot change your own role.");
+
+        var user = await GetUserOrThrowAsync(userId, cancellationToken);
+        var newRole = request.Role.Trim().ToUpperInvariant();
+        var roleEntity = await roleRepository.GetByNameAsync(newRole, cancellationToken)
+            ?? throw new ValidationAppException("Invalid role.");
+
+        var currentRole = await roleRepository.GetRoleNameForUserAsync(userId, cancellationToken);
+        if (currentRole == newRole)
+            throw new ValidationAppException("User already has this role.");
+
+        var now = DateTime.UtcNow;
+
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await roleRepository.ReplaceUserRoleAsync(userId, roleEntity.Id, actorUserId, cancellationToken);
+            await roleRepository.SaveChangesAsync(cancellationToken);
+
+            if (newRole == RoleConstants.Employee)
+            {
+                var profile = await employeeRepository.GetByUserIdAsync(userId, cancellationToken);
+                if (profile is null)
+                {
+                    await employeeRepository.AddAsync(new ResourceProfile
+                    {
+                        UserId = userId,
+                        ResourceStatus = ResourceStatusConstants.Bench,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    }, cancellationToken);
+                    await employeeRepository.SaveChangesAsync(cancellationToken);
+                }
+            }
+
+            await auditService.LogUpdateAsync(
+                actorUserId,
+                AuditEntityConstants.Users,
+                user.Id,
+                new { role = currentRole },
+                new { role = newRole },
+                cancellationToken);
+
+            await userRepository.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "User role updated. {EntityName} {EntityId} by {ActorUserId} to {NewRole}",
+                AuditEntityConstants.Users, user.Id, actorUserId, newRole);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     private async Task<User> GetUserOrThrowAsync(long userId, CancellationToken cancellationToken)
     {
         return await userRepository.GetByIdAsync(userId, cancellationToken)
             ?? throw new NotFoundAppException("User not found.", ErrorCodes.UserNotFound);
     }
+
+    private static (string? Department, string? Designation) ResolveDepartmentAndDesignation(
+        string role,
+        CreateUserRequestDto request)
+    {
+        var department = NormalizeOptional(request.Department);
+        var designation = NormalizeOptional(request.Designation);
+
+        if (role == RoleConstants.Admin)
+        {
+            department ??= DepartmentConstants.HrOps;
+            designation ??= DesignationConstants.SystemAdministrator;
+        }
+
+        return (department, designation);
+    }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
 }

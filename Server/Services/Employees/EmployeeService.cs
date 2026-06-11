@@ -9,6 +9,7 @@ using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
 using Server.Services.Shared;
 
 namespace Server.Services.Employees;
@@ -17,6 +18,7 @@ public class EmployeeService(
     PrmDbContext context,
     IEmployeeRepository employeeRepository,
     IUserRepository userRepository,
+    IRoleRepository roleRepository,
     ISkillRepository skillRepository,
     IEmployeeSkillRepository employeeSkillRepository,
     IAllocationRepository allocationRepository,
@@ -30,46 +32,50 @@ public class EmployeeService(
         string? department,
         CancellationToken cancellationToken = default)
     {
-        var employees = await employeeRepository.GetAllAsync(status, department, cancellationToken);
-        var users = await userRepository.GetByIdsAsync(employees.Select(e => e.UserId), cancellationToken);
+        var profiles = await employeeRepository.GetAllAsync(status, department, cancellationToken);
+        var users = await userRepository.GetByIdsAsync(profiles.Select(p => p.UserId), cancellationToken);
 
-        var items = employees.Select(e => new EmployeeListItemDto
+        var items = profiles.Select(p =>
         {
-            Id = e.Id,
-            UserId = e.UserId,
-            FullName = users.TryGetValue(e.UserId, out var user) ? user.FullName : string.Empty,
-            Department = e.Department,
-            EmploymentStatus = e.EmploymentStatus,
-            IsActive = e.IsActive
+            users.TryGetValue(p.UserId, out var user);
+            return new EmployeeListItemDto
+            {
+                Id = p.Id,
+                UserId = p.UserId,
+                FullName = user?.FullName ?? string.Empty,
+                Department = user?.Department,
+                EmploymentStatus = p.ResourceStatus,
+                IsActive = user?.IsActive ?? false
+            };
         }).ToList();
 
         return new EmployeeListResponseDto
         {
             Employees = items,
             Total = items.Count,
-            AllocatedCount = items.Count(i => i.EmploymentStatus == AllocationConstants.EmploymentStatusAllocated),
-            BenchCount = items.Count(i => i.EmploymentStatus == AllocationConstants.EmploymentStatusBench)
+            AllocatedCount = items.Count(i => i.EmploymentStatus == ResourceStatusConstants.Allocated),
+            BenchCount = items.Count(i => i.EmploymentStatus == ResourceStatusConstants.Bench)
         };
     }
 
     public async Task<EmployeeDetailDto> GetEmployeeByIdAsync(long employeeId, CancellationToken cancellationToken = default)
     {
-        var employee = await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
-        var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
             ?? throw new NotFoundAppException("Linked user not found.");
 
-        var employeeSkills = await employeeSkillRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
+        var profileSkills = await employeeSkillRepository.GetByUserIdAsync(profile.UserId, cancellationToken);
         var skills = new List<EmployeeSkillDto>();
-        foreach (var es in employeeSkills)
+        foreach (var ps in profileSkills)
         {
-            var skill = await skillRepository.GetByIdAsync(es.SkillId, cancellationToken);
+            var skill = await skillRepository.GetByIdAsync(ps.SkillId, cancellationToken);
             if (skill is null) continue;
             skills.Add(new EmployeeSkillDto
             {
                 SkillId = skill.Id,
                 SkillName = skill.SkillName,
                 Category = skill.Category,
-                ProficiencyLevel = es.ProficiencyLevel
+                ProficiencyLevel = ps.ProficiencyLevel
             });
         }
 
@@ -90,15 +96,15 @@ public class EmployeeService(
 
         return new EmployeeDetailDto
         {
-            Id = employee.Id,
-            UserId = employee.UserId,
+            Id = profile.Id,
+            UserId = profile.UserId,
             FullName = user.FullName,
-            EmployeeCode = employee.EmployeeCode,
-            Department = employee.Department,
-            Designation = employee.Designation,
-            EmploymentStatus = employee.EmploymentStatus,
-            IsActive = employee.IsActive,
-            ManagerUserId = employee.ManagerId,
+            EmployeeCode = $"EMP-{profile.UserId:D6}",
+            Department = user.Department,
+            Designation = user.Designation,
+            EmploymentStatus = profile.ResourceStatus,
+            IsActive = user.IsActive,
+            ManagerUserId = profile.ManagerId,
             Skills = skills,
             ActiveAllocations = allocationDtos
         };
@@ -109,17 +115,23 @@ public class EmployeeService(
         UpdateEmployeeRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        var employee = await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
+            ?? throw new NotFoundAppException("Linked user not found.");
+
         var now = DateTime.UtcNow;
 
         if (!string.IsNullOrWhiteSpace(request.Department))
-            employee.Department = request.Department.Trim();
+            user.Department = request.Department.Trim().ToUpperInvariant();
 
         if (!string.IsNullOrWhiteSpace(request.Designation))
-            employee.Designation = request.Designation.Trim();
+            user.Designation = request.Designation.Trim().ToUpperInvariant();
 
-        employee.UpdatedAt = now;
-        await employeeRepository.UpdateAsync(employee, cancellationToken);
+        user.UpdatedAt = now;
+        profile.UpdatedAt = now;
+
+        await userRepository.UpdateAsync(user, cancellationToken);
+        await employeeRepository.UpdateAsync(profile, cancellationToken);
         await employeeRepository.SaveChangesAsync(cancellationToken);
     }
 
@@ -128,16 +140,16 @@ public class EmployeeService(
         long employeeId,
         CancellationToken cancellationToken = default)
     {
-        var employee = await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
-        if (!employee.IsActive)
-            throw new ValidationAppException("Employee is already inactive.");
-
-        var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
             ?? throw new NotFoundAppException("Linked user not found.");
+
+        if (!user.IsActive)
+            throw new ValidationAppException("Employee is already inactive.");
 
         var now = DateTime.UtcNow;
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var oldEmploymentStatus = employee.EmploymentStatus;
+        var oldResourceStatus = profile.ResourceStatus;
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -154,10 +166,9 @@ public class EmployeeService(
                 endedAllocationIds.Add(allocation.Id);
             }
 
-            employee.IsActive = false;
-            employee.EmploymentStatus = AllocationConstants.EmploymentStatusBench;
-            employee.UpdatedAt = now;
-            await employeeRepository.UpdateAsync(employee, cancellationToken);
+            profile.ResourceStatus = ResourceStatusConstants.Bench;
+            profile.UpdatedAt = now;
+            await employeeRepository.UpdateAsync(profile, cancellationToken);
 
             user.IsActive = false;
             user.UpdatedAt = now;
@@ -166,9 +177,9 @@ public class EmployeeService(
             await auditService.LogDeactivateAsync(
                 actorUserId,
                 AuditEntityConstants.Employees,
-                employee.Id,
-                new { isActive = true, employmentStatus = oldEmploymentStatus },
-                new { isActive = false, employmentStatus = AllocationConstants.EmploymentStatusBench, endedAllocationIds },
+                profile.Id,
+                new { isActive = true, resourceStatus = oldResourceStatus },
+                new { isActive = false, resourceStatus = ResourceStatusConstants.Bench, endedAllocationIds },
                 cancellationToken);
 
             await employeeRepository.SaveChangesAsync(cancellationToken);
@@ -176,7 +187,7 @@ public class EmployeeService(
 
             logger.LogInformation(
                 "Employee deactivated. {EntityName} {EntityId} by {ActorUserId}",
-                AuditEntityConstants.Employees, employee.Id, actorUserId);
+                AuditEntityConstants.Employees, profile.Id, actorUserId);
         }
         catch
         {
@@ -190,7 +201,7 @@ public class EmployeeService(
         AddSkillRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
 
         var skillName = request.SkillName.Trim();
         var category = request.Category.Trim().ToUpperInvariant();
@@ -211,12 +222,12 @@ public class EmployeeService(
             await employeeRepository.SaveChangesAsync(cancellationToken);
         }
 
-        if (await employeeSkillRepository.ExistsAsync(employeeId, skill.Id, cancellationToken))
+        if (await employeeSkillRepository.ExistsAsync(profile.UserId, skill.Id, cancellationToken))
             throw new ConflictAppException("Employee already has this skill.");
 
-        await employeeSkillRepository.AddAsync(new EmployeeSkill
+        await employeeSkillRepository.AddAsync(new UserSkill
         {
-            EmployeeId = employeeId,
+            UserId = profile.UserId,
             SkillId = skill.Id,
             ProficiencyLevel = proficiency,
             CreatedAt = now
@@ -231,24 +242,24 @@ public class EmployeeService(
         UpdateSkillProficiencyRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
 
-        var employeeSkill = await employeeSkillRepository.GetAsync(employeeId, skillId, cancellationToken)
+        var profileSkill = await employeeSkillRepository.GetAsync(profile.UserId, skillId, cancellationToken)
             ?? throw new NotFoundAppException("Skill not found for this employee.");
 
-        employeeSkill.ProficiencyLevel = request.ProficiencyLevel.Trim().ToUpperInvariant();
-        await employeeSkillRepository.UpdateAsync(employeeSkill, cancellationToken);
+        profileSkill.ProficiencyLevel = request.ProficiencyLevel.Trim().ToUpperInvariant();
+        await employeeSkillRepository.UpdateAsync(profileSkill, cancellationToken);
         await employeeRepository.SaveChangesAsync(cancellationToken);
     }
 
     public async Task RemoveSkillAsync(long employeeId, long skillId, CancellationToken cancellationToken = default)
     {
-        await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
 
-        var employeeSkill = await employeeSkillRepository.GetAsync(employeeId, skillId, cancellationToken)
+        var profileSkill = await employeeSkillRepository.GetAsync(profile.UserId, skillId, cancellationToken)
             ?? throw new NotFoundAppException("Skill not found for this employee.");
 
-        await employeeSkillRepository.RemoveAsync(employeeSkill, cancellationToken);
+        await employeeSkillRepository.RemoveAsync(profileSkill, cancellationToken);
         await employeeRepository.SaveChangesAsync(cancellationToken);
     }
 
@@ -257,20 +268,21 @@ public class EmployeeService(
         AssignManagerRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        var employee = await GetEmployeeOrThrowAsync(employeeId, cancellationToken);
+        var profile = await GetResourceProfileOrThrowAsync(employeeId, cancellationToken);
 
         var manager = await userRepository.GetByIdAsync(request.ManagerUserId, cancellationToken)
             ?? throw new NotFoundAppException("Manager user not found.");
 
-        if (!manager.IsActive || !string.Equals(manager.Role, RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
+        if (!manager.IsActive
+            || !await roleRepository.UserHasRoleAsync(request.ManagerUserId, RoleConstants.Manager, cancellationToken))
             throw new ValidationAppException("Specified user is not an active manager.", errorCode: ErrorCodes.InvalidManager);
 
-        if (employee.UserId == request.ManagerUserId)
+        if (profile.UserId == request.ManagerUserId)
             throw new ValidationAppException("Employee cannot be their own manager.");
 
-        employee.ManagerId = request.ManagerUserId;
-        employee.UpdatedAt = DateTime.UtcNow;
-        await employeeRepository.UpdateAsync(employee, cancellationToken);
+        profile.ManagerId = request.ManagerUserId;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await employeeRepository.UpdateAsync(profile, cancellationToken);
         await employeeRepository.SaveChangesAsync(cancellationToken);
     }
 
@@ -280,24 +292,22 @@ public class EmployeeService(
     {
         var team = await employeeRepository.GetByManagerIdAsync(managerUserId, cancellationToken);
         if (team.Count == 0)
-        {
             return new TeamDashboardDto();
-        }
 
-        var employeeIds = team.Select(e => e.Id).ToList();
+        var profileIds = team.Select(e => e.Id).ToList();
         var userIds = team.Select(e => e.UserId).ToList();
         var users = await userRepository.GetByIdsAsync(userIds, cancellationToken);
-        var allEmployeeSkills = await employeeSkillRepository.GetByEmployeeIdsAsync(employeeIds, cancellationToken);
-        var skillIds = allEmployeeSkills.Select(es => es.SkillId).Distinct();
+        var allUserSkills = await employeeSkillRepository.GetByUserIdsAsync(userIds, cancellationToken);
+        var skillIds = allUserSkills.Select(es => es.SkillId).Distinct();
         var skills = await skillRepository.GetByIdsAsync(skillIds, cancellationToken);
-        var activeAllocations = await allocationRepository.GetActiveByEmployeeIdsAsync(employeeIds, cancellationToken);
+        var activeAllocations = await allocationRepository.GetActiveByEmployeeIdsAsync(profileIds, cancellationToken);
 
-        var utilizationByEmployee = activeAllocations
-            .GroupBy(a => a.EmployeeId)
+        var utilizationByProfile = activeAllocations
+            .GroupBy(a => a.ResourceProfileId)
             .ToDictionary(g => g.Key, g => g.Sum(a => a.AllocationPercentage));
 
-        var skillsByEmployee = allEmployeeSkills
-            .GroupBy(es => es.EmployeeId)
+        var skillsByUserId = allUserSkills
+            .GroupBy(es => es.UserId)
             .ToDictionary(
                 g => g.Key,
                 g => g.Select(es => skills.TryGetValue(es.SkillId, out var skill) ? skill.SkillName : string.Empty)
@@ -308,19 +318,20 @@ public class EmployeeService(
         var active = new List<TeamActiveEmployeeDto>();
         var partialCount = 0;
 
-        foreach (var employee in team)
+        foreach (var profile in team)
         {
-            var utilization = utilizationByEmployee.GetValueOrDefault(employee.Id, 0m);
-            var name = users.TryGetValue(employee.UserId, out var user) ? user.FullName : string.Empty;
+            var utilization = utilizationByProfile.GetValueOrDefault(profile.Id, 0m);
+            users.TryGetValue(profile.UserId, out var user);
+            var name = user?.FullName ?? string.Empty;
 
             if (utilization == 0)
             {
                 bench.Add(new TeamBenchEmployeeDto
                 {
-                    Id = employee.Id,
+                    Id = profile.Id,
                     Name = name,
-                    Department = employee.Department,
-                    Skills = skillsByEmployee.GetValueOrDefault(employee.Id, [])
+                    Department = user?.Department,
+                    Skills = skillsByUserId.GetValueOrDefault(profile.UserId, [])
                 });
             }
             else
@@ -330,7 +341,7 @@ public class EmployeeService(
 
                 active.Add(new TeamActiveEmployeeDto
                 {
-                    Id = employee.Id,
+                    Id = profile.Id,
                     Name = name,
                     AllocationPercentage = utilization,
                     AvailabilityPercentage = AllocationConstants.MaxUtilizationPercentage - utilization
@@ -352,27 +363,27 @@ public class EmployeeService(
         long employeeId,
         CancellationToken cancellationToken = default)
     {
-        var employee = await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
+        var profile = await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
             ?? throw new NotFoundAppException("Employee not found.", ErrorCodes.EmployeeNotFound);
 
-        if (employee.ManagerId != managerUserId)
+        if (profile.ManagerId != managerUserId)
             throw new ForbiddenAppException("Employee is not on your team.", ErrorCodes.EmployeeNotOnTeam);
 
-        var user = await userRepository.GetByIdAsync(employee.UserId, cancellationToken)
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
             ?? throw new NotFoundAppException("Linked user not found.");
 
-        var employeeSkills = await employeeSkillRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
+        var profileSkills = await employeeSkillRepository.GetByUserIdAsync(profile.UserId, cancellationToken);
         var skillDtos = new List<EmployeeSkillDto>();
-        foreach (var es in employeeSkills)
+        foreach (var ps in profileSkills)
         {
-            var skill = await skillRepository.GetByIdAsync(es.SkillId, cancellationToken);
+            var skill = await skillRepository.GetByIdAsync(ps.SkillId, cancellationToken);
             if (skill is null) continue;
             skillDtos.Add(new EmployeeSkillDto
             {
                 SkillId = skill.Id,
                 SkillName = skill.SkillName,
                 Category = skill.Category,
-                ProficiencyLevel = es.ProficiencyLevel
+                ProficiencyLevel = ps.ProficiencyLevel
             });
         }
 
@@ -399,10 +410,10 @@ public class EmployeeService(
 
         return new TeamMemberDetailDto
         {
-            Id = employee.Id,
+            Id = profile.Id,
             FullName = user.FullName,
-            Department = employee.Department,
-            EmploymentStatus = employee.EmploymentStatus,
+            Department = user.Department,
+            EmploymentStatus = profile.ResourceStatus,
             TotalUtilizationPercentage = totalUtilization,
             Skills = skillDtos,
             ActiveAllocations = allocationDtos,
@@ -410,7 +421,7 @@ public class EmployeeService(
         };
     }
 
-    private async Task<Employee> GetEmployeeOrThrowAsync(long employeeId, CancellationToken cancellationToken)
+    private async Task<ResourceProfile> GetResourceProfileOrThrowAsync(long employeeId, CancellationToken cancellationToken)
     {
         return await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
             ?? throw new NotFoundAppException("Employee not found.", ErrorCodes.EmployeeNotFound);
