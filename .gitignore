@@ -7,17 +7,23 @@
 [Oo]bj/
 [Dd]ebug/
 [Rr]elease/
+.build-out/
 publish/
 artifacts/
+_build_out/
 *.dll
 *.exe
 *.pdb
+*.deps.json
+*.runtimeconfig.json
+*.staticwebassets.endpoints.json
 project.lock.json
 project.fragment.lock.json
 
 # --- IDE and editor ---
 .vs/
 .idea/
+.vscode/
 *.user
 *.suo
 *.rsuser
@@ -29,6 +35,8 @@ coverage/
 *.coverage
 *.coveragexml
 *.trx
+CoverletSourceRootsMapping_*
+.msCoverageSourceRootsMapping_*
 
 # --- Secrets and local config overrides ---
 # Use dotnet user-secrets or env vars for JWT/LLM keys (see Developer Guide §14)

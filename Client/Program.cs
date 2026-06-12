@@ -1,14 +1,21 @@
-﻿using Client.Helpers;
+﻿using Client;
+using Client.Common;
 using Microsoft.Extensions.Configuration;
 
 var config = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile("appsettings.Development.json", optional: true)
     .Build();
 
-var serverBaseUrl = config["ServerBaseUrl"] ?? "https://localhost:5001";
+var clientSettings = config.GetSection("ClientSettings").Get<ClientSettings>()
+    ?? throw new InvalidOperationException("ClientSettings configuration is missing.");
 
-ConsoleHelper.PrintHeader("PRM Client — Phase 0");
-Console.WriteLine($"Server: {serverBaseUrl}");
+if (string.IsNullOrWhiteSpace(clientSettings.ServerBaseUrl))
+    throw new InvalidOperationException("ClientSettings:ServerBaseUrl is required.");
+
+await AppStarter.RunAsync(clientSettings.ServerBaseUrl);
+
+Console.WriteLine();
 Console.WriteLine("Press any key to exit...");
 Console.ReadKey();

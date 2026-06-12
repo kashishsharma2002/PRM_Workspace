@@ -10,6 +10,7 @@ public class ProjectMilestone
     public string MilestoneStatus { get; set; } = "NOT_STARTED";
     public int StoryPoints { get; set; }
     public short SortOrder { get; set; }
+    public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
