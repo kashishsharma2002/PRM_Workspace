@@ -1,172 +1,136 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
 using Server.Common.Allocations;
-using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
-using Server.Models.DTOs.Users;
+using Server.Models.DTOs.Employees;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Services.Shared;
+using Server.Services.Employees;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class EmployeeServiceTeamTests : IDisposable
+public class EmployeeServiceTeamTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<ISkillRepository> _skillRepoMock;
+    private readonly Mock<IEmployeeSkillRepository> _employeeSkillRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<EmployeeService>> _loggerMock;
     private readonly EmployeeService _employeeService;
-    private readonly UserService _userService;
 
     public EmployeeServiceTeamTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
 
-        _context = new PrmDbContext(options);
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
 
-        var userRepo = new UserRepository(_context);
-        var employeeRepo = new EmployeeRepository(_context);
-        var skillRepo = new SkillRepository(_context);
-        var employeeSkillRepo = new EmployeeSkillRepository(_context);
-        var allocationRepo = new AllocationRepository(_context);
-        var projectRepo = new ProjectRepository(_context);
-        var timesheetRepo = new TimesheetRepository(_context);
-        var auditService = TestServiceFactory.CreateAuditService(_context);
-        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _skillRepoMock = new Mock<ISkillRepository>();
+        _employeeSkillRepoMock = new Mock<IEmployeeSkillRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _timesheetRepoMock = new Mock<ITimesheetRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<EmployeeService>>();
 
-        _userService = new UserService(
-            _context,
-            userRepo,
-            employeeRepo,
-            roleRepo,
-            auditService,
-            TestServiceFactory.CreateLogger<UserService>());
         _employeeService = new EmployeeService(
-            _context,
-            employeeRepo,
-            userRepo,
-            roleRepo,
-            skillRepo,
-            employeeSkillRepo,
-            allocationRepo,
-            projectRepo,
-            timesheetRepo,
-            auditService,
-            TestServiceFactory.CreateLogger<EmployeeService>());
+            _transactionManagerMock.Object,
+            _employeeRepoMock.Object,
+            _userRepoMock.Object,
+            _roleRepoMock.Object,
+            _skillRepoMock.Object,
+            _employeeSkillRepoMock.Object,
+            _allocationRepoMock.Object,
+            _projectRepoMock.Object,
+            _timesheetRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task GetTeamDashboardAsync_SplitsBenchAndActive()
     {
-        var managerUserId = await CreateManagerAsync();
-        var benchEmployeeId = await CreateTeamEmployeeAsync(managerUserId, "bench.user", hasAllocation: false);
-        var activeEmployeeId = await CreateTeamEmployeeAsync(managerUserId, "active.user", hasAllocation: true);
+        // Arrange
+        var managerUserId = 1;
+        var team = new List<ResourceProfile>
+        {
+            new() { Id = 10, UserId = 101, ManagerId = managerUserId },
+            new() { Id = 20, UserId = 102, ManagerId = managerUserId }
+        };
 
+        var usersDict = new Dictionary<long, User>
+        {
+            { 101, new User { Id = 101, FullName = "bench.user", Department = "DEV" } },
+            { 102, new User { Id = 102, FullName = "active.user", Department = "DEV" } }
+        };
+
+        var activeAllocations = new List<ProjectAllocation>
+        {
+            new() { ResourceProfileId = 20, AllocationPercentage = 50, AllocationStatus = "ACTIVE" }
+        };
+
+        _employeeRepoMock.Setup(r => r.GetByManagerIdAsync(managerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(team);
+        _userRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(usersDict);
+        _employeeSkillRepoMock.Setup(r => r.GetByUserIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<UserSkill>());
+        _skillRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, Skill>());
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(activeAllocations);
+
+        // Act
         var dashboard = await _employeeService.GetTeamDashboardAsync(managerUserId);
 
+        // Assert
         Assert.Equal(1, dashboard.BenchCount);
         Assert.Single(dashboard.BenchEmployees);
-        Assert.Equal(benchEmployeeId, dashboard.BenchEmployees[0].Id);
+        Assert.Equal(10, dashboard.BenchEmployees[0].Id);
         Assert.Single(dashboard.ActiveEmployees);
-        Assert.Equal(activeEmployeeId, dashboard.ActiveEmployees[0].Id);
+        Assert.Equal(20, dashboard.ActiveEmployees[0].Id);
         Assert.Equal(1, dashboard.PartialCount);
     }
 
     [Fact]
     public async Task GetTeamMemberDetailAsync_RejectsOutOfScopeEmployee()
     {
-        var managerUserId = await CreateManagerAsync();
-        var otherManagerUserId = await CreateManagerAsync("other.mgr");
-        var employeeId = await CreateTeamEmployeeAsync(otherManagerUserId, "other.team", hasAllocation: false);
+        // Arrange
+        var managerUserId = 1;
+        var profile = new ResourceProfile { Id = 10, UserId = 101, ManagerId = 2 }; // manager ID mismatch
 
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAppException>(
-            () => _employeeService.GetTeamMemberDetailAsync(managerUserId, employeeId));
-    }
-
-    private async Task<long> CreateManagerAsync(string username = "team.mgr")
-    {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
-        {
-            FullName = "Team Manager",
-            Email = $"{username}@techserve.com",
-            Username = username,
-            TemporaryPassword = "Welcome1",
-            Role = "MANAGER",
-            Department = DepartmentConstants.Management,
-            Designation = DesignationConstants.DeliveryManager
-        });
-
-        var now = DateTime.UtcNow;
-        _context.ResourceProfiles.Add(new ResourceProfile
-        {
-            UserId = result.UserId,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
-
-        return result.UserId;
-    }
-
-    private async Task<long> CreateTeamEmployeeAsync(long managerUserId, string username, bool hasAllocation)
-    {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
-        {
-            FullName = username,
-            Email = $"{username}@techserve.com",
-            Username = username,
-            TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE",
-            Department = DepartmentConstants.SoftwareDevelopment,
-            Designation = DesignationConstants.SoftwareEngineer
-        });
-
-        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == result.UserId);
-        profile.ManagerId = managerUserId;
-        profile.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        if (hasAllocation)
-        {
-            var now = DateTime.UtcNow;
-            var project = new Project
-            {
-                ProjectCode = $"PRJ-{profile.Id}",
-                ProjectName = $"Project {username}",
-                StartDate = new DateOnly(2026, 1, 1),
-                EndDate = new DateOnly(2026, 12, 31),
-                ProjectStatus = "ACTIVE",
-                ManagerUserId = managerUserId,
-                IsActive = true,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            _context.Projects.Add(project);
-            await _context.SaveChangesAsync();
-
-            _context.ProjectAllocations.Add(new ProjectAllocation
-            {
-                ResourceProfileId = profile.Id,
-                ProjectId = project.Id,
-                AllocationPercentage = 50,
-                AllocationStartDate = new DateOnly(2026, 3, 1),
-                AllocationEndDate = new DateOnly(2026, 12, 31),
-                AllocationStatus = AllocationStatusConstants.Active,
-                AllocatedByUserId = managerUserId,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-            await _context.SaveChangesAsync();
-        }
-
-        return profile.Id;
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
+            () => _employeeService.GetTeamMemberDetailAsync(managerUserId, 10));
     }
 }

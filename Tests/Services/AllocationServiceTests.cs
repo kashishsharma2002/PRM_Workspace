@@ -1,204 +1,170 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
 using Server.Common.Allocations;
+using Server.Common.Audit;
 using Server.Common.Roles;
-using Tests.Helpers;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Allocations;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Services.Shared;
+using Server.Services.Employees;
+using Server.Services.Allocations;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class AllocationServiceTests : IDisposable
+public class AllocationServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<IResourceStatusService> _resourceStatusServiceMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<AllocationService>> _loggerMock;
     private readonly AllocationService _allocationService;
-    private readonly long _managerUserId;
-    private readonly long _employeeId;
-    private readonly long _projectId;
+
+    private readonly long _managerUserId = 1;
+    private readonly long _employeeId = 10;
+    private readonly long _projectId = 100;
+    private readonly string _employeeFullName = "Employee A";
+    private readonly string _projectName = "Project A";
 
     public AllocationServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
 
-        _context = new PrmDbContext(options);
-        (_managerUserId, _employeeId, _projectId) = SeedData();
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
+
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _resourceStatusServiceMock = new Mock<IResourceStatusService>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<AllocationService>>();
 
         _allocationService = new AllocationService(
-            _context,
-            new AllocationRepository(_context),
-            new EmployeeRepository(_context),
-            new UserRepository(_context),
-            new ProjectRepository(_context),
-            TestServiceFactory.CreateResourceStatusService(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            TestServiceFactory.CreateLogger<AllocationService>());
-    }
-
-    private (long ManagerUserId, long EmployeeId, long ProjectId) SeedData()
-    {
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
-        var now = DateTime.UtcNow;
-        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
-        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
-
-        var manager = new User
-        {
-            Username = "ankit.shah",
-            Email = "ankit@techserve.com",
-            FullName = "Ankit Shah",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(manager);
-
-        var user = new User
-        {
-            Username = "ravi.kumar",
-            Email = "ravi@techserve.com",
-            FullName = "Ravi Kumar",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(user);
-        _context.SaveChanges();
-
-        _context.UserRoles.AddRange(
-            new UserRole { UserId = manager.Id, RoleId = managerRole.Id, AssignedAt = now },
-            new UserRole { UserId = user.Id, RoleId = employeeRole.Id, AssignedAt = now });
-
-        var managerProfile = new ResourceProfile
-        {
-            UserId = manager.Id,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(managerProfile);
-        _context.SaveChanges();
-
-        var employee = new ResourceProfile
-        {
-            UserId = user.Id,
-            ManagerId = manager.Id,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(employee);
-        _context.SaveChanges();
-
-        var project = new Project
-        {
-            ProjectCode = "PRJ-000201",
-            ProjectName = "Alpha Portal",
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2026, 12, 31),
-            ProjectStatus = "ACTIVE",
-            ManagerUserId = manager.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Projects.Add(project);
-        _context.SaveChanges();
-
-        _context.ProjectAllocations.Add(new ProjectAllocation
-        {
-            ResourceProfileId = employee.Id,
-            ProjectId = project.Id,
-            AllocationPercentage = 50,
-            AllocationStartDate = new DateOnly(2026, 3, 1),
-            AllocationEndDate = new DateOnly(2026, 6, 30),
-            AllocationStatus = AllocationStatusConstants.Active,
-            AllocatedByUserId = manager.Id,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        _context.SaveChanges();
-
-        return (manager.Id, employee.Id, project.Id);
+            _transactionManagerMock.Object,
+            _allocationRepoMock.Object,
+            _employeeRepoMock.Object,
+            _userRepoMock.Object,
+            _projectRepoMock.Object,
+            _resourceStatusServiceMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task GetAllAllocationsAsync_ReturnsJoinedNames()
     {
+        // Arrange
+        var allocations = new List<ProjectAllocation>
+        {
+            new() { Id = 50, ResourceProfileId = _employeeId, ProjectId = _projectId, AllocationPercentage = 50, AllocationStatus = "ACTIVE" }
+        };
+
+        _allocationRepoMock.Setup(r => r.GetAllAsync(null, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocations);
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = 101 });
+        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 101, FullName = _employeeFullName });
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = _projectId, ProjectName = _projectName });
+
+        // Act
         var result = await _allocationService.GetAllAllocationsAsync(null, null, null);
 
+        // Assert
         Assert.Single(result.Allocations);
-        Assert.Equal("Ravi Kumar", result.Allocations[0].EmployeeName);
-        Assert.Equal("Alpha Portal", result.Allocations[0].ProjectName);
+        Assert.Equal(_employeeFullName, result.Allocations[0].EmployeeName);
+        Assert.Equal(_projectName, result.Allocations[0].ProjectName);
         Assert.Equal(1, result.TotalActiveCount);
     }
 
     [Fact]
     public async Task CreateAllocationAsync_Success_SetsEmployeeAllocated()
     {
-        var now = DateTime.UtcNow;
-        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
-        var managerUserId = _managerUserId;
+        // Arrange
+        var benchEmployee = new ResourceProfile { Id = _employeeId, UserId = 101, ManagerId = _managerUserId, ResourceStatus = ResourceStatusConstants.Bench };
+        var user = new User { Id = 101, FullName = "Bench Employee", IsActive = true };
+        var project = new Project { Id = _projectId, ManagerUserId = _managerUserId, ProjectStatus = "ACTIVE", StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 12, 31) };
 
-        var benchUser = new User
-        {
-            Username = "priya.sharma",
-            Email = "priya@techserve.com",
-            FullName = "Priya Sharma",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(benchUser);
-        await _context.SaveChangesAsync();
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(benchEmployee);
+        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectAllocation>());
 
-        _context.UserRoles.Add(new UserRole
-        {
-            UserId = benchUser.Id,
-            RoleId = employeeRole.Id,
-            AssignedAt = now
-        });
+        _allocationRepoMock.Setup(r => r.AddAsync(It.IsAny<ProjectAllocation>(), It.IsAny<CancellationToken>()))
+            .Callback<ProjectAllocation, CancellationToken>((a, c) => a.Id = 99);
 
-        var benchEmployee = new ResourceProfile
-        {
-            UserId = benchUser.Id,
-            ManagerId = managerUserId,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(benchEmployee);
-        await _context.SaveChangesAsync();
-
+        // Act
         var request = new CreateAllocationRequestDto
         {
-            EmployeeId = benchEmployee.Id,
+            EmployeeId = _employeeId,
             ProjectId = _projectId,
             AllocationPercentage = 30,
             AllocationStartDate = new DateOnly(2026, 7, 1),
             AllocationEndDate = new DateOnly(2026, 9, 30)
         };
 
+        // We simulate ApplyStatusFromActiveAllocationsAsync modifying status to PartiallyAllocated
+        _resourceStatusServiceMock.Setup(s => s.ApplyStatusFromActiveAllocationsAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .Callback(() => benchEmployee.ResourceStatus = ResourceStatusConstants.PartiallyAllocated)
+            .Returns(Task.CompletedTask);
+
         var result = await _allocationService.CreateAllocationAsync(_managerUserId, request);
 
-        Assert.True(result.AllocationId > 0);
-        Assert.Equal(AllocationConstants.EmploymentStatusPartiallyAllocated, result.EmploymentStatus);
-
-        var profile = await _context.ResourceProfiles.FindAsync(benchEmployee.Id);
-        Assert.Equal(ResourceStatusConstants.PartiallyAllocated, profile!.ResourceStatus);
+        // Assert
+        Assert.Equal(99, result.AllocationId);
+        Assert.Equal(ResourceStatusConstants.PartiallyAllocated, result.EmploymentStatus);
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task CreateAllocationAsync_OverAllocation_Throws()
     {
+        // Arrange
+        var profile = new ResourceProfile { Id = _employeeId, UserId = 101, ManagerId = _managerUserId };
+        var user = new User { Id = 101, FullName = "Employee A", IsActive = true };
+        var project = new Project { Id = _projectId, ManagerUserId = _managerUserId, ProjectStatus = "ACTIVE", StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 12, 31) };
+        var existingAllocations = new List<ProjectAllocation>
+        {
+            new() { Id = 50, ResourceProfileId = _employeeId, AllocationPercentage = 50, AllocationStartDate = new DateOnly(2026, 3, 1), AllocationEndDate = new DateOnly(2026, 6, 30), AllocationStatus = "ACTIVE" }
+        };
+
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingAllocations);
+
         var request = new CreateAllocationRequestDto
         {
             EmployeeId = _employeeId,
@@ -208,6 +174,7 @@ public class AllocationServiceTests : IDisposable
             AllocationEndDate = new DateOnly(2026, 6, 30)
         };
 
+        // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(
             () => _allocationService.CreateAllocationAsync(_managerUserId, request));
 
@@ -218,35 +185,14 @@ public class AllocationServiceTests : IDisposable
     [Fact]
     public async Task CreateAllocationAsync_NotManagerTeam_Throws()
     {
-        var now = DateTime.UtcNow;
-        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
-        var otherManager = new User
-        {
-            Username = "other.mgr",
-            Email = "other@techserve.com",
-            FullName = "Other Manager",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(otherManager);
-        await _context.SaveChangesAsync();
+        // Arrange
+        var profile = new ResourceProfile { Id = _employeeId, UserId = 101, ManagerId = 999 }; // Different manager ID
+        var user = new User { Id = 101, FullName = "Employee A", IsActive = true };
 
-        _context.UserRoles.Add(new UserRole
-        {
-            UserId = otherManager.Id,
-            RoleId = managerRole.Id,
-            AssignedAt = now
-        });
-        _context.ResourceProfiles.Add(new ResourceProfile
-        {
-            UserId = otherManager.Id,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
 
         var request = new CreateAllocationRequestDto
         {
@@ -257,58 +203,86 @@ public class AllocationServiceTests : IDisposable
             AllocationEndDate = new DateOnly(2026, 8, 31)
         };
 
+        // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAppException>(
-            () => _allocationService.CreateAllocationAsync(otherManager.Id, request));
+            () => _allocationService.CreateAllocationAsync(_managerUserId, request));
     }
 
     [Fact]
     public async Task EndAllocationAsync_SetsBenchWhenNoOtherActive()
     {
-        var allocation = await _context.ProjectAllocations.FirstAsync();
-        var result = await _allocationService.EndAllocationAsync(_managerUserId, allocation.Id);
+        // Arrange
+        var allocation = new ProjectAllocation { Id = 50, ResourceProfileId = _employeeId, ProjectId = _projectId, AllocationPercentage = 50, AllocationStatus = "ACTIVE" };
+        var profile = new ResourceProfile { Id = _employeeId, UserId = 101, ManagerId = _managerUserId, ResourceStatus = ResourceStatusConstants.Allocated };
+        var project = new Project { Id = _projectId, ManagerUserId = _managerUserId };
 
-        var endedAllocation = await _context.ProjectAllocations.FindAsync(allocation.Id);
-        Assert.Equal(AllocationStatusConstants.Ended, endedAllocation!.AllocationStatus);
-        Assert.Equal(AllocationConstants.EmploymentStatusBench, result.EmploymentStatus);
+        _allocationRepoMock.Setup(r => r.GetByIdAsync(50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocation);
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectAllocation> { allocation });
 
-        var profile = await _context.ResourceProfiles.FindAsync(_employeeId);
-        Assert.Equal(ResourceStatusConstants.Bench, profile!.ResourceStatus);
+        _resourceStatusServiceMock.Setup(s => s.ApplyStatusFromActiveAllocationsAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .Callback(() => profile.ResourceStatus = ResourceStatusConstants.Bench)
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _allocationService.EndAllocationAsync(_managerUserId, 50);
+
+        // Assert
+        Assert.Equal(AllocationStatusConstants.Ended, allocation.AllocationStatus);
+        Assert.Equal(ResourceStatusConstants.Bench, profile.ResourceStatus);
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task EndAllocationAsync_NotProjectOwner_Throws()
     {
-        var now = DateTime.UtcNow;
-        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
-        var otherManager = new User
-        {
-            Username = "other.mgr2",
-            Email = "other2@techserve.com",
-            FullName = "Other Manager 2",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(otherManager);
-        await _context.SaveChangesAsync();
+        // Arrange
+        var allocation = new ProjectAllocation { Id = 50, ResourceProfileId = _employeeId, ProjectId = _projectId, AllocationPercentage = 50, AllocationStatus = "ACTIVE" };
+        var project = new Project { Id = _projectId, ManagerUserId = 999 }; // Different manager
 
-        _context.UserRoles.Add(new UserRole
-        {
-            UserId = otherManager.Id,
-            RoleId = managerRole.Id,
-            AssignedAt = now
-        });
-        await _context.SaveChangesAsync();
+        _allocationRepoMock.Setup(r => r.GetByIdAsync(50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocation);
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
 
-        var allocation = await _context.ProjectAllocations.FirstAsync();
-
+        // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAppException>(
-            () => _allocationService.EndAllocationAsync(otherManager.Id, allocation.Id));
+            () => _allocationService.EndAllocationAsync(_managerUserId, 50));
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task CreateAllocationAsync_CompletedProject_ThrowsValidation()
     {
-        _context.Dispose();
+        // Arrange
+        var profile = new ResourceProfile { Id = _employeeId, UserId = 101, ManagerId = _managerUserId, ResourceStatus = ResourceStatusConstants.Bench };
+        var user = new User { Id = 101, FullName = "Employee Completed", IsActive = true };
+        var completedProject = new Project { Id = _projectId, ManagerUserId = _managerUserId, ProjectStatus = "COMPLETED" };
+
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(completedProject);
+
+        var request = new CreateAllocationRequestDto
+        {
+            EmployeeId = _employeeId,
+            ProjectId = _projectId,
+            AllocationPercentage = 50,
+            AllocationStartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            AllocationEndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7))
+        };
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<ValidationAppException>(
+            () => _allocationService.CreateAllocationAsync(_managerUserId, request));
+
+        Assert.Contains("ACTIVE or PLANNED", ex.Message);
     }
 }

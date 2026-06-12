@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class ResetPasswordScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Reset User Password");
 
@@ -19,7 +19,7 @@ public static class ResetPasswordScreen
 
         try
         {
-            var user = await UserLookupHelper.ResolveUserAsync(client, input);
+            var user = await UserLookupHelper.ResolveUserAsync(clients, input);
             if (user is null)
             {
                 ConsoleHelper.PrintError("User not found.");
@@ -52,10 +52,9 @@ public static class ResetPasswordScreen
             if (action != "S")
                 return;
 
-            await client.PutAsync<object>(
-                $"/api/users/{user.Id}/reset-password",
-                new ResetPasswordRequest { NewTemporaryPassword = newPassword },
-                requireAuth: true);
+            await clients.Admin.ResetPasswordAsync(
+                user.Id,
+                new ResetPasswordRequest { NewTemporaryPassword = newPassword });
 
             ConsoleHelper.PrintSuccess(
                 "Password reset. User will be prompted to change it on next login.");

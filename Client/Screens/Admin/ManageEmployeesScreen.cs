@@ -5,15 +5,15 @@ namespace Client.Screens.Admin;
 
 public static class ManageEmployeesScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
-            ConsoleHelper.PrintHeader("Manage Employees");
-            Console.WriteLine("1. View All Employees");
-            Console.WriteLine("2. Update Employee");
-            Console.WriteLine("3. Deactivate Employee");
-            Console.WriteLine("4. Manage Employee Skills");
+            ConsoleHelper.PrintHeader("Manage Employees/Resources");
+            Console.WriteLine("1. View All Employees/Resources");
+            Console.WriteLine("2. Update Employee/Resource");
+            Console.WriteLine("3. Deactivate Employee/Resource");
+            Console.WriteLine("4. Manage Employee/Resource Skills");
             Console.WriteLine("5. Assign Manager");
             Console.WriteLine("6. Back");
             ConsoleHelper.PrintDivider();
@@ -25,19 +25,19 @@ public static class ManageEmployeesScreen
                 switch (choice)
                 {
                     case "1":
-                        await ViewAllEmployeesScreen.RunAsync(client);
+                        await ViewAllEmployeesScreen.RunAsync(clients);
                         break;
                     case "2":
-                        await UpdateEmployeeScreen.RunAsync(client);
+                        await UpdateEmployeeScreen.RunAsync(clients);
                         break;
                     case "3":
-                        await DeactivateEmployeeScreen.RunAsync(client);
+                        await DeactivateEmployeeScreen.RunAsync(clients);
                         break;
                     case "4":
-                        await ManageEmployeeSkillsScreen.RunAsync(client);
+                        await ManageEmployeeSkillsScreen.RunAsync(clients);
                         break;
                     case "5":
-                        await AssignManagerScreen.RunAsync(client);
+                        await AssignManagerScreen.RunAsync(clients);
                         break;
                     case "6":
                     case "0":

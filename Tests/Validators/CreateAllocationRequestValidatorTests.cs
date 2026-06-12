@@ -10,13 +10,14 @@ public class CreateAllocationRequestValidatorTests
     [Fact]
     public void Validate_ValidRequest_Passes()
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var result = _validator.Validate(new CreateAllocationRequestDto
         {
             EmployeeId = 1,
             ProjectId = 2,
             AllocationPercentage = 50,
-            AllocationStartDate = new DateOnly(2026, 3, 1),
-            AllocationEndDate = new DateOnly(2026, 6, 30)
+            AllocationStartDate = today.AddDays(1),
+            AllocationEndDate = today.AddDays(30)
         });
 
         Assert.True(result.IsValid);
@@ -25,13 +26,14 @@ public class CreateAllocationRequestValidatorTests
     [Fact]
     public void Validate_EndBeforeStart_Fails()
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var result = _validator.Validate(new CreateAllocationRequestDto
         {
             EmployeeId = 1,
             ProjectId = 2,
             AllocationPercentage = 50,
-            AllocationStartDate = new DateOnly(2026, 6, 30),
-            AllocationEndDate = new DateOnly(2026, 3, 1)
+            AllocationStartDate = today.AddDays(30),
+            AllocationEndDate = today.AddDays(1)
         });
 
         Assert.False(result.IsValid);
@@ -42,13 +44,14 @@ public class CreateAllocationRequestValidatorTests
     [InlineData(101)]
     public void Validate_InvalidPercentage_Fails(decimal percentage)
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var result = _validator.Validate(new CreateAllocationRequestDto
         {
             EmployeeId = 1,
             ProjectId = 2,
             AllocationPercentage = percentage,
-            AllocationStartDate = new DateOnly(2026, 3, 1),
-            AllocationEndDate = new DateOnly(2026, 6, 30)
+            AllocationStartDate = today.AddDays(1),
+            AllocationEndDate = today.AddDays(30)
         });
 
         Assert.False(result.IsValid);

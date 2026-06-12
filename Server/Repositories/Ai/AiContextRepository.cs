@@ -3,7 +3,7 @@ using Server.Common.Allocations;
 using Server.Common.Projects;
 using Server.Common.Roles;
 using Server.Data;
-using Server.Services.Ai.Models;
+using Server.Models.DTOs.Ai.Context;
 
 namespace Server.Repositories.Ai;
 

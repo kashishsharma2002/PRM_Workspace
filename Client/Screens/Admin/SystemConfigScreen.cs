@@ -6,13 +6,13 @@ namespace Client.Screens.Admin;
 
 public static class SystemConfigScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
             while (true)
             {
-                var config = await client.GetAsync<SystemConfigResponse>("/api/system-config", requireAuth: true);
+                var config = await clients.Admin.GetSystemConfigAsync();
                 if (config is null)
                 {
                     ConsoleHelper.PrintError("Failed to load configuration.");
@@ -37,16 +37,16 @@ public static class SystemConfigScreen
                 switch (choice)
                 {
                     case "1":
-                        await UpdateApiKeyAsync(client, config.LlmProvider);
+                        await UpdateApiKeyAsync(clients, config.LlmProvider);
                         break;
                     case "2":
-                        await UpdateProviderAsync(client);
+                        await UpdateProviderAsync(clients);
                         break;
                     case "3":
-                        await UpdateSchedulerAsync(client);
+                        await UpdateSchedulerAsync(clients);
                         break;
                     case "4":
-                        await UpdateMaxHoursAsync(client);
+                        await UpdateMaxHoursAsync(clients);
                         break;
                     case "5":
                     case "0":
@@ -61,7 +61,7 @@ public static class SystemConfigScreen
         catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 
-    private static async Task UpdateApiKeyAsync(RestClient client, string currentProvider)
+    private static async Task UpdateApiKeyAsync(AppClients clients, string currentProvider)
     {
         Console.Write("New LLM API Key: ");
         var key = ReadMaskedInput();
@@ -73,10 +73,8 @@ public static class SystemConfigScreen
                 if (!string.Equals(Console.ReadLine()?.Trim(), "y", StringComparison.OrdinalIgnoreCase))
                     return;
 
-                await client.PutAsync<object>(
-                    "/api/system-config",
-                    new UpdateSystemConfigRequest { LlmApiKey = string.Empty },
-                    requireAuth: true);
+                await clients.Admin.UpdateSystemConfigAsync(
+                    new UpdateSystemConfigRequest { LlmApiKey = string.Empty });
                 ConsoleHelper.PrintSuccess("LLM API key cleared for Gemma.");
                 return;
             }
@@ -85,11 +83,11 @@ public static class SystemConfigScreen
             return;
         }
 
-        await client.PutAsync<object>("/api/system-config", new UpdateSystemConfigRequest { LlmApiKey = key }, requireAuth: true);
+        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest { LlmApiKey = key });
         ConsoleHelper.PrintSuccess("LLM API key updated.");
     }
 
-    private static async Task UpdateProviderAsync(RestClient client)
+    private static async Task UpdateProviderAsync(AppClients clients)
     {
         Console.WriteLine("(1) Gemini  (2) Groq  (3) Gemma (local Ollama)");
         Console.Write("Select provider: ");
@@ -107,11 +105,11 @@ public static class SystemConfigScreen
             return;
         }
 
-        await client.PutAsync<object>("/api/system-config", new UpdateSystemConfigRequest { LlmProvider = provider }, requireAuth: true);
+        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest { LlmProvider = provider });
         ConsoleHelper.PrintSuccess("LLM provider updated.");
     }
 
-    private static async Task UpdateSchedulerAsync(RestClient client)
+    private static async Task UpdateSchedulerAsync(AppClients clients)
     {
         Console.Write("Scheduler interval (hours): ");
         if (!int.TryParse(Console.ReadLine()?.Trim(), out var hours) || hours <= 0)
@@ -120,11 +118,11 @@ public static class SystemConfigScreen
             return;
         }
 
-        await client.PutAsync<object>("/api/system-config", new UpdateSystemConfigRequest { SchedulerIntervalHours = hours }, requireAuth: true);
+        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest { SchedulerIntervalHours = hours });
         ConsoleHelper.PrintSuccess("Scheduler interval updated.");
     }
 
-    private static async Task UpdateMaxHoursAsync(RestClient client)
+    private static async Task UpdateMaxHoursAsync(AppClients clients)
     {
         Console.Write("Max weekly hours: ");
         if (!int.TryParse(Console.ReadLine()?.Trim(), out var hours) || hours <= 0)
@@ -133,7 +131,7 @@ public static class SystemConfigScreen
             return;
         }
 
-        await client.PutAsync<object>("/api/system-config", new UpdateSystemConfigRequest { MaxWeeklyHours = hours }, requireAuth: true);
+        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest { MaxWeeklyHours = hours });
         ConsoleHelper.PrintSuccess("Max weekly hours updated.");
     }
 
@@ -158,3 +156,4 @@ public static class SystemConfigScreen
         return value;
     }
 }
+

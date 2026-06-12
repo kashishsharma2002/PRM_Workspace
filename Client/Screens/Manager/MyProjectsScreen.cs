@@ -1,17 +1,18 @@
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Ai;
+using Client.Models.ManagerProjects;
 
 namespace Client.Screens.Manager;
 
 public static class MyProjectsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
             ConsoleHelper.PrintHeader("My Projects");
-            var response = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+            var response = await clients.Manager.GetMyProjectsAsync();
             if (response is null || response.Projects.Count == 0)
             {
                 Console.WriteLine("No projects found.");
@@ -42,7 +43,7 @@ public static class MyProjectsScreen
             }
 
             var selected = response.Projects[selection - 1];
-            await ShowProjectDetailAsync(client, selected.Id);
+            await ShowProjectDetailAsync(clients, selected.Id);
         }
         catch (SessionExpiredException)
         {
@@ -54,9 +55,9 @@ public static class MyProjectsScreen
         }
     }
 
-    private static async Task ShowProjectDetailAsync(RestClient client, long projectId)
+    private static async Task ShowProjectDetailAsync(AppClients clients, long projectId)
     {
-        var detail = await client.GetAsync<ManagerProjectDetail>($"/api/projects/{projectId}/manager", requireAuth: true);
+        var detail = await clients.Manager.GetProjectDetailAsync(projectId);
         if (detail is null)
         {
             ConsoleHelper.PrintError("Failed to load project detail.");
@@ -103,10 +104,9 @@ public static class MyProjectsScreen
         if (choice == "A")
         {
             Console.WriteLine("\nGenerating AI summary...");
-            var url = $"/api/ai/projects/{projectId}/risk-summary";
             try
             {
-                var response = await client.GetAsync<AiRiskSummaryResponse>(url, requireAuth: true);
+                var response = await clients.Ai.GetProjectRiskSummaryAsync(projectId);
                 if (response is not null)
                 {
                     ConsoleHelper.PrintDivider();

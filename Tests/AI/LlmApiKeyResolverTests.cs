@@ -1,76 +1,75 @@
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Server.AI;
+using Moq;
+using Server.AI.Configuration;
+using Server.AI.Infrastructure;
 using Server.Common;
-using Server.Data;
 using Server.Exceptions;
 using Server.Models.Entities;
 using Server.Repositories.SystemConfig;
-using Tests.Helpers;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.AI;
 
-public class LlmApiKeyResolverTests : IDisposable
+public class LlmApiKeyResolverTests
 {
-    private readonly PrmDbContext _context;
-    private readonly ConfigEncryptionHelper _encryption = new(DataProtectionProvider.Create("Tests"));
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IConfigEncryptionHelper> _encryptionMock;
+    private readonly LlmApiKeyResolver _resolver;
 
     public LlmApiKeyResolverTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-
-        _context = new PrmDbContext(options);
-        _context.SystemConfigurations.Add(new SystemConfiguration
-        {
-            ConfigKey = ConfigKeys.LlmApiKey,
-            ConfigValue = string.Empty,
-            UpdatedAt = DateTime.UtcNow
-        });
-        _context.SaveChanges();
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _encryptionMock = new Mock<IConfigEncryptionHelper>();
+        _resolver = new LlmApiKeyResolver(_encryptionMock.Object);
     }
 
     [Fact]
     public async Task ResolveAsync_ReturnsDecryptedKey_WhenStoredEncrypted()
     {
-        var config = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        config.ConfigValue = _encryption.Encrypt("AIzaSyTestKey");
-        await _context.SaveChangesAsync();
+        // Arrange
+        var config = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "enc:AIzaSyTestKey" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+        _encryptionMock.Setup(e => e.IsEncrypted("enc:AIzaSyTestKey")).Returns(true);
+        _encryptionMock.Setup(e => e.Decrypt("enc:AIzaSyTestKey")).Returns("AIzaSyTestKey");
 
-        var repository = new SystemConfigRepository(_context);
-        var resolved = await LlmApiKeyResolver.ResolveAsync(repository, _encryption);
+        // Act
+        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma);
 
+        // Assert
         Assert.Equal("AIzaSyTestKey", resolved);
     }
 
     [Fact]
     public async Task ResolveAsync_ReturnsPlainText_WhenStoredUnencrypted()
     {
-        var config = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        config.ConfigValue = "plain-api-key";
-        await _context.SaveChangesAsync();
+        // Arrange
+        var config = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "plain-api-key" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+        _encryptionMock.Setup(e => e.IsEncrypted("plain-api-key")).Returns(false);
 
-        var repository = new SystemConfigRepository(_context);
-        var resolved = await LlmApiKeyResolver.ResolveAsync(repository, _encryption);
+        // Act
+        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma);
 
+        // Assert
         Assert.Equal("plain-api-key", resolved);
     }
 
     [Fact]
     public async Task ResolveAsync_Throws_WhenEncryptedValueCannotBeDecrypted()
     {
-        var config = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        config.ConfigValue = ConfigEncryptionHelper.EncryptedPrefix + "invalid-protected-blob";
-        await _context.SaveChangesAsync();
+        // Arrange
+        var config = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "enc:invalid-protected-blob" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+        _encryptionMock.Setup(e => e.IsEncrypted("enc:invalid-protected-blob")).Returns(true);
+        _encryptionMock.Setup(e => e.Decrypt("enc:invalid-protected-blob")).Throws(new Exception("Decryption failed"));
 
-        var repository = new SystemConfigRepository(_context);
-
+        // Act & Assert
         await Assert.ThrowsAsync<AiServiceAppException>(() =>
-            LlmApiKeyResolver.ResolveAsync(repository, _encryption));
+            _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma));
     }
-
-    public void Dispose() => _context.Dispose();
 }

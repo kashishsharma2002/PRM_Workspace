@@ -1,79 +1,85 @@
+using Client.Common;
+
 namespace Client.HttpClients;
 
 public class AdminClient(RestClient restClient) : IAdminClient
 {
     public Task<UserListResponse?> GetUsersAsync() =>
-        restClient.GetAsync<UserListResponse>("/api/users", requireAuth: true);
+        restClient.GetAsync<UserListResponse>(ApiRoutes.Users, requireAuth: true);
 
     public Task<CreateUserResponse?> CreateUserAsync(CreateUserRequest request) =>
-        restClient.PostAsync<CreateUserResponse>("/api/users", request, requireAuth: true);
+        restClient.PostAsync<CreateUserResponse>(ApiRoutes.Users, request, requireAuth: true);
 
     public Task ResetPasswordAsync(long userId, ResetPasswordRequest request) =>
-        restClient.PutAsync<object>($"/api/users/{userId}/reset-password", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.UserResetPassword(userId), request, requireAuth: true);
 
     public Task DeactivateUserAsync(long userId) =>
-        restClient.PutAsync<object>($"/api/users/{userId}/deactivate", new { }, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.UserDeactivate(userId), new { }, requireAuth: true);
 
     public Task ReactivateUserAsync(long userId) =>
-        restClient.PutAsync<object>($"/api/users/{userId}/reactivate", new { }, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.UserReactivate(userId), new { }, requireAuth: true);
 
     public Task<EmployeeListResponse?> GetEmployeesAsync(string? query = null)
     {
-        var endpoint = string.IsNullOrWhiteSpace(query) ? "/api/employees" : $"/api/employees?{query}";
+        var endpoint = string.IsNullOrWhiteSpace(query)
+            ? ApiRoutes.Employees
+            : ApiRoutes.EmployeesWithQuery(query);
         return restClient.GetAsync<EmployeeListResponse>(endpoint, requireAuth: true);
     }
 
     public Task<EmployeeDetail?> GetEmployeeAsync(long employeeId) =>
-        restClient.GetAsync<EmployeeDetail>($"/api/employees/{employeeId}", requireAuth: true);
+        restClient.GetAsync<EmployeeDetail>(ApiRoutes.EmployeeById(employeeId), requireAuth: true);
 
     public Task UpdateEmployeeAsync(long employeeId, UpdateEmployeeRequest request) =>
-        restClient.PutAsync<object>($"/api/employees/{employeeId}", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.EmployeeById(employeeId), request, requireAuth: true);
 
     public Task DeactivateEmployeeAsync(long employeeId) =>
-        restClient.PutAsync<object>($"/api/employees/{employeeId}/deactivate", new { }, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.EmployeeDeactivate(employeeId), new { }, requireAuth: true);
 
     public Task AssignManagerAsync(long employeeId, AssignManagerRequest request) =>
-        restClient.PutAsync<object>($"/api/employees/{employeeId}/assign-manager", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.EmployeeAssignManager(employeeId), request, requireAuth: true);
 
     public Task AddSkillAsync(long employeeId, AddSkillRequest request) =>
-        restClient.PostAsync<object>($"/api/employees/{employeeId}/skills", request, requireAuth: true);
+        restClient.PostAsync<object>(ApiRoutes.EmployeeSkills(employeeId), request, requireAuth: true);
 
     public Task UpdateSkillProficiencyAsync(long employeeId, long skillId, UpdateSkillProficiencyRequest request) =>
-        restClient.PutAsync<object>($"/api/employees/{employeeId}/skills/{skillId}", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.EmployeeSkill(employeeId, skillId), request, requireAuth: true);
 
     public Task DeleteSkillAsync(long employeeId, long skillId) =>
-        restClient.DeleteAsync<object>($"/api/employees/{employeeId}/skills/{skillId}", requireAuth: true);
+        restClient.DeleteAsync<object>(ApiRoutes.EmployeeSkill(employeeId, skillId), requireAuth: true);
 
     public Task<ProjectListResponse?> GetProjectsAsync() =>
-        restClient.GetAsync<ProjectListResponse>("/api/projects", requireAuth: true);
+        restClient.GetAsync<ProjectListResponse>(ApiRoutes.Projects, requireAuth: true);
 
     public Task<ProjectDetail?> GetProjectAsync(long projectId) =>
-        restClient.GetAsync<ProjectDetail>($"/api/projects/{projectId}", requireAuth: true);
+        restClient.GetAsync<ProjectDetail>(ApiRoutes.ProjectById(projectId), requireAuth: true);
 
     public Task<CreateProjectResponse?> CreateProjectAsync(CreateProjectRequest request) =>
-        restClient.PostAsync<CreateProjectResponse>("/api/projects", request, requireAuth: true);
+        restClient.PostAsync<CreateProjectResponse>(ApiRoutes.Projects, request, requireAuth: true);
 
     public Task UpdateProjectAsync(long projectId, UpdateProjectRequest request) =>
-        restClient.PutAsync<object>($"/api/projects/{projectId}", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.ProjectById(projectId), request, requireAuth: true);
 
     public Task<MilestoneListResponse?> GetMilestonesAsync(long projectId) =>
-        restClient.GetAsync<MilestoneListResponse>($"/api/projects/{projectId}/milestones", requireAuth: true);
+        restClient.GetAsync<MilestoneListResponse>(ApiRoutes.ProjectMilestones(projectId), requireAuth: true);
 
     public Task CreateMilestoneAsync(long projectId, CreateMilestoneRequest request) =>
-        restClient.PostAsync<object>($"/api/projects/{projectId}/milestones", request, requireAuth: true);
+        restClient.PostAsync<object>(ApiRoutes.ProjectMilestones(projectId), request, requireAuth: true);
 
     public Task UpdateMilestoneStatusAsync(long projectId, long milestoneId, UpdateMilestoneStatusRequest request) =>
-        restClient.PutAsync<object>($"/api/projects/{projectId}/milestones/{milestoneId}/status", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.ProjectMilestoneStatus(projectId, milestoneId), request, requireAuth: true);
 
     public Task<AllocationListResponse?> GetAllocationsAsync(string? query = null)
     {
-        var endpoint = string.IsNullOrWhiteSpace(query) ? "/api/allocations" : $"/api/allocations?{query}";
+        var endpoint = string.IsNullOrWhiteSpace(query)
+            ? ApiRoutes.Allocations
+            : ApiRoutes.AllocationsWithQuery(query);
         return restClient.GetAsync<AllocationListResponse>(endpoint, requireAuth: true);
     }
 
     public Task<SystemConfigResponse?> GetSystemConfigAsync() =>
-        restClient.GetAsync<SystemConfigResponse>("/api/system-config", requireAuth: true);
+        restClient.GetAsync<SystemConfigResponse>(ApiRoutes.SystemConfig, requireAuth: true);
 
     public Task UpdateSystemConfigAsync(UpdateSystemConfigRequest request) =>
-        restClient.PutAsync<object>("/api/system-config", request, requireAuth: true);
+        restClient.PutAsync<object>(ApiRoutes.SystemConfig, request, requireAuth: true);
 }

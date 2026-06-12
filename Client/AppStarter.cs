@@ -12,24 +12,28 @@ public static class AppStarter
 {
     public static async Task RunAsync(string serverBaseUrl)
     {
-        var client = new RestClient(serverBaseUrl);
+        var clients = new AppClients(serverBaseUrl);
 
         while (true)
         {
-            SessionStore.Clear();
-            client.SetToken(null);
-
-            if (!await LoginScreen.RunAsync(client))
+            switch (WelcomeScreen.Run())
             {
-                Console.WriteLine("Press any key to retry or Ctrl+C to exit...");
-                Console.ReadKey(intercept: true);
+                case WelcomeChoice.Exit:
+                    return;
+            }
+
+            SessionStore.Clear();
+            clients.SetToken(null);
+
+            if (!await LoginScreen.RunAsync(clients))
+            {
                 Console.WriteLine();
                 continue;
             }
 
             if (SessionStore.ForcePasswordChange)
             {
-                while (!await ChangePasswordScreen.RunAsync(client))
+                while (!await ChangePasswordScreen.RunAsync(clients))
                 {
                     Console.WriteLine("Press any key to retry password change...");
                     Console.ReadKey(intercept: true);
@@ -37,22 +41,22 @@ public static class AppStarter
                 }
             }
 
-            var loggedOut = await RouteToMenuAsync(client);
+            var loggedOut = await RouteToMenuAsync(clients);
             if (loggedOut)
                 continue;
         }
     }
 
-    private static async Task<bool> RouteToMenuAsync(RestClient client)
+    private static async Task<bool> RouteToMenuAsync(AppClients clients)
     {
         switch (SessionStore.Role)
         {
             case RoleConstants.Admin:
-                return !await AdminMenuScreen.RunAsync(client);
+                return !await AdminMenuScreen.RunAsync(clients);
             case RoleConstants.Manager:
-                return !await ManagerMenuScreen.RunAsync(client);
+                return !await ManagerMenuScreen.RunAsync(clients);
             case RoleConstants.Employee:
-                return !await EmployeeMenuScreen.RunAsync(client);
+                return !await EmployeeMenuScreen.RunAsync(clients);
             default:
                 ConsoleHelper.PrintError($"Unknown role: {SessionStore.Role}");
                 return true;

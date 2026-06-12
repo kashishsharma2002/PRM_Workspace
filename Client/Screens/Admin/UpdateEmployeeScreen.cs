@@ -6,27 +6,27 @@ namespace Client.Screens.Admin;
 
 public static class UpdateEmployeeScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
-        ConsoleHelper.PrintHeader("Update Employee");
+        ConsoleHelper.PrintHeader("Update Employee/Resource");
 
-        Console.Write("Enter Employee ID: ");
+        Console.Write("Enter Employee/Resource ID: ");
         if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
         {
-            ConsoleHelper.PrintError("Invalid employee ID.");
+            ConsoleHelper.PrintError("Invalid employee/resource ID.");
             return;
         }
 
         try
         {
-            var detail = await client.GetAsync<EmployeeDetail>($"/api/employees/{employeeId}", requireAuth: true);
+            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
             if (detail is null)
             {
-                ConsoleHelper.PrintError("Employee not found.");
+                ConsoleHelper.PrintError("Employee/Resource not found.");
                 return;
             }
 
-            Console.WriteLine($"Employee: {detail.FullName} ({detail.EmployeeCode})");
+            Console.WriteLine($"Employee/Resource: {detail.FullName} ({detail.EmployeeCode})");
             Console.WriteLine($"Current Department : {FormatDepartment(detail.Department)}");
             Console.WriteLine($"Current Designation: {FormatDesignation(detail.Designation)}");
             Console.WriteLine();
@@ -54,16 +54,15 @@ public static class UpdateEmployeeScreen
             if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
                 return;
 
-            await client.PutAsync<object>(
-                $"/api/employees/{employeeId}",
+            await clients.Admin.UpdateEmployeeAsync(
+                employeeId,
                 new UpdateEmployeeRequest
                 {
                     Department = department,
                     Designation = designation
-                },
-                requireAuth: true);
+                });
 
-            ConsoleHelper.PrintSuccess("Employee updated.");
+            ConsoleHelper.PrintSuccess("Employee/Resource updated.");
         }
         catch (SessionExpiredException)
         {

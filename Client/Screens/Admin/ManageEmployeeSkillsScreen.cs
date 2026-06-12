@@ -8,14 +8,14 @@ public static class ManageEmployeeSkillsScreen
     private static readonly string[] Categories = ["BACKEND", "FRONTEND", "DEVOPS", "QA", "OTHER"];
     private static readonly string[] Proficiencies = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
 
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
-        ConsoleHelper.PrintHeader("Manage Skills");
+        ConsoleHelper.PrintHeader("Manage Employee/Resource Skills");
 
-        Console.Write("Enter Employee ID: ");
+        Console.Write("Enter Employee/Resource ID: ");
         if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
         {
-            ConsoleHelper.PrintError("Invalid employee ID.");
+            ConsoleHelper.PrintError("Invalid employee/resource ID.");
             return;
         }
 
@@ -23,14 +23,14 @@ public static class ManageEmployeeSkillsScreen
         {
             while (true)
             {
-                var detail = await client.GetAsync<EmployeeDetail>($"/api/employees/{employeeId}", requireAuth: true);
+                var detail = await clients.Admin.GetEmployeeAsync(employeeId);
                 if (detail is null)
                 {
-                    ConsoleHelper.PrintError("Employee not found.");
+                    ConsoleHelper.PrintError("Employee/Resource not found.");
                     return;
                 }
 
-                ConsoleHelper.PrintHeader($"Skills — {detail.FullName}");
+                ConsoleHelper.PrintHeader($"Skills — {detail.FullName} (Employee/Resource)");
                 Console.WriteLine("Current Skills:");
                 if (detail.Skills.Count == 0)
                     Console.WriteLine("  (none)");
@@ -55,13 +55,13 @@ public static class ManageEmployeeSkillsScreen
                 switch (choice)
                 {
                     case "1":
-                        await AddSkillAsync(client, employeeId);
+                        await AddSkillAsync(clients, employeeId);
                         break;
                     case "2":
-                        await UpdateProficiencyAsync(client, employeeId, detail.Skills);
+                        await UpdateProficiencyAsync(clients, employeeId, detail.Skills);
                         break;
                     case "3":
-                        await RemoveSkillAsync(client, employeeId, detail.Skills);
+                        await RemoveSkillAsync(clients, employeeId, detail.Skills);
                         break;
                     case "4":
                     case "0":
@@ -82,7 +82,7 @@ public static class ManageEmployeeSkillsScreen
         }
     }
 
-    private static async Task AddSkillAsync(RestClient client, long employeeId)
+    private static async Task AddSkillAsync(AppClients clients, long employeeId)
     {
         Console.Write("Skill Name        : ");
         var skillName = Console.ReadLine()?.Trim() ?? string.Empty;
@@ -101,17 +101,17 @@ public static class ManageEmployeeSkillsScreen
             return;
         }
 
-        await client.PostAsync<object>($"/api/employees/{employeeId}/skills", new AddSkillRequest
+        await clients.Admin.AddSkillAsync(employeeId, new AddSkillRequest
         {
             SkillName = skillName,
             Category = category,
             ProficiencyLevel = proficiency
-        }, requireAuth: true);
+        });
 
         ConsoleHelper.PrintSuccess("Skill added.");
     }
 
-    private static async Task UpdateProficiencyAsync(RestClient client, long employeeId, List<EmployeeSkillItem> skills)
+    private static async Task UpdateProficiencyAsync(AppClients clients, long employeeId, List<EmployeeSkillItem> skills)
     {
         if (skills.Count == 0)
         {
@@ -136,15 +136,15 @@ public static class ManageEmployeeSkillsScreen
         }
 
         var skill = skills[index - 1];
-        await client.PutAsync<object>(
-            $"/api/employees/{employeeId}/skills/{skill.SkillId}",
-            new UpdateSkillProficiencyRequest { ProficiencyLevel = proficiency },
-            requireAuth: true);
+        await clients.Admin.UpdateSkillProficiencyAsync(
+            employeeId,
+            skill.SkillId,
+            new UpdateSkillProficiencyRequest { ProficiencyLevel = proficiency });
 
         ConsoleHelper.PrintSuccess("Proficiency updated.");
     }
 
-    private static async Task RemoveSkillAsync(RestClient client, long employeeId, List<EmployeeSkillItem> skills)
+    private static async Task RemoveSkillAsync(AppClients clients, long employeeId, List<EmployeeSkillItem> skills)
     {
         if (skills.Count == 0)
         {
@@ -160,7 +160,7 @@ public static class ManageEmployeeSkillsScreen
         }
 
         var skill = skills[index - 1];
-        await client.DeleteAsync<object>($"/api/employees/{employeeId}/skills/{skill.SkillId}", requireAuth: true);
+        await clients.Admin.DeleteSkillAsync(employeeId, skill.SkillId);
         ConsoleHelper.PrintSuccess("Skill removed.");
     }
 

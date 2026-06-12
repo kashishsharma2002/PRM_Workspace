@@ -7,7 +7,7 @@ namespace Client.Screens.Manager;
 
 public static class AiAssistantScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
@@ -25,13 +25,13 @@ public static class AiAssistantScreen
                 switch (choice)
                 {
                     case "1":
-                        await RunSkillMatchAsync(client);
+                        await RunSkillMatchAsync(clients);
                         break;
                     case "2":
-                        await RunRiskSummaryAsync(client);
+                        await RunRiskSummaryAsync(clients);
                         break;
                     case "3":
-                        await TeamBuilderScreen.RunAsync(client);
+                        await TeamBuilderScreen.RunAsync(clients);
                         break;
                     case "4":
                         return;
@@ -51,7 +51,7 @@ public static class AiAssistantScreen
         }
     }
 
-    private static async Task RunSkillMatchAsync(RestClient client)
+    private static async Task RunSkillMatchAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Skill Match");
         Console.WriteLine("\nDescribe your project requirement in plain English:");
@@ -64,9 +64,8 @@ public static class AiAssistantScreen
         }
 
         Console.WriteLine("\nSearching... (calling AI)");
-        var url = $"/api/ai/skill-match?requirement={Uri.EscapeDataString(requirement)}";
 
-        var response = await client.GetAsync<AiSkillMatchResponse>(url, requireAuth: true);
+        var response = await clients.Ai.GetOrganizationalSkillMatchAsync(requirement);
         if (response is null || response.Matches.Count == 0)
         {
             ConsoleHelper.PrintError("No AI matches found or server error occurred.");
@@ -93,14 +92,14 @@ public static class AiAssistantScreen
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
         if (choice == "A")
-            await AllocateResourceScreen.RunAsync(client);
+            await AllocateResourceScreen.RunAsync(clients);
     }
 
-    private static async Task RunRiskSummaryAsync(RestClient client)
+    private static async Task RunRiskSummaryAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Risk Summary");
 
-        var projectsResponse = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+        var projectsResponse = await clients.Manager.GetMyProjectsAsync();
         if (projectsResponse is null || projectsResponse.Projects.Count == 0)
         {
             Console.WriteLine("No projects found.");
@@ -111,7 +110,7 @@ public static class AiAssistantScreen
         for (var i = 0; i < projectsResponse.Projects.Count; i++)
         {
             var p = projectsResponse.Projects[i];
-            Console.WriteLine($"  {i + 1}.  {p.ProjectName,-20} {ConsoleHelper.MapHealthLabel(p.HealthStatus)}");
+            Console.WriteLine($"  {i + 1}.  {p.ProjectName,-20} {ConsoleHelper.MapHealthLabelWithEmoji(p.HealthStatus)}");
         }
 
         ConsoleHelper.PrintDivider();
@@ -128,9 +127,8 @@ public static class AiAssistantScreen
         var project = projectsResponse.Projects[selectNum - 1];
 
         Console.WriteLine("\nGenerating AI summary...");
-        var url = $"/api/ai/projects/{project.Id}/risk-summary";
 
-        var response = await client.GetAsync<AiRiskSummaryResponse>(url, requireAuth: true);
+        var response = await clients.Ai.GetProjectRiskSummaryAsync(project.Id);
         if (response is null)
         {
             ConsoleHelper.PrintError("Failed to load AI risk summary.");

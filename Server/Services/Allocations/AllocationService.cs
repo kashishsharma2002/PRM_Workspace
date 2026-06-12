@@ -12,7 +12,7 @@ using Server.Services.Shared;
 namespace Server.Services.Allocations;
 
 public class AllocationService(
-    PrmDbContext context,
+    IDbTransactionManager transactionManager,
     IAllocationRepository allocationRepository,
     IEmployeeRepository employeeRepository,
     IUserRepository userRepository,
@@ -133,7 +133,7 @@ public class AllocationService(
 
         var now = DateTime.UtcNow;
 
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
         try
         {
             var allocation = new ProjectAllocation
@@ -223,7 +223,7 @@ public class AllocationService(
         var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(allocation.ResourceProfileId, cancellationToken);
         var hasOtherActive = activeAllocations.Any(a => a.Id != allocation.Id);
 
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
         try
         {
             allocation.AllocationEndDate = today;
@@ -329,7 +329,7 @@ public class AllocationService(
             allocation.AllocationEndDate
         };
 
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
         try
         {
             allocation.AllocationPercentage = newPercentage;

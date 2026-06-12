@@ -5,7 +5,7 @@ namespace Client.Screens.Manager;
 
 public static class TimesheetsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
@@ -25,9 +25,7 @@ public static class TimesheetsScreen
                 return;
             }
 
-            var response = await client.GetAsync<TeamTimesheetListResponse>(
-                $"/api/timesheets/team?week={weekStart:yyyy-MM-dd}",
-                requireAuth: true);
+            var response = await clients.Manager.GetTeamTimesheetsAsync(weekStart);
 
             if (response is null)
             {
@@ -48,7 +46,7 @@ public static class TimesheetsScreen
             {
                 foreach (var row in response.Rows)
                 {
-                    var status = row.Status == "MISSED" ? $"{row.Status} !" : row.Status;
+                    var status = row.Status == "MISSED" ? $"{row.Status} ⚠" : row.Status;
                     var idDisplay = row.TimesheetId?.ToString() ?? "-";
                     Console.WriteLine(
                         $"{idDisplay,-8}{row.EmployeeName,-18}{row.ProjectName,-18}{row.HoursLogged,4:0.#}   {status}");
@@ -68,9 +66,7 @@ public static class TimesheetsScreen
                 return;
             }
 
-            var detail = await client.GetAsync<ManagerTimesheetDetail>(
-                $"/api/timesheets/{timesheetId}",
-                requireAuth: true);
+            var detail = await clients.Manager.GetTimesheetDetailAsync(timesheetId);
 
             if (detail is null)
             {

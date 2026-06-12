@@ -11,4 +11,11 @@ public sealed class ApiClientException : Exception
         ErrorCode = errorCode;
         StatusCode = statusCode;
     }
+
+    public ApiClientException(string message, string? errorCode, int statusCode, Exception innerException)
+        : base(message, innerException)
+    {
+        ErrorCode = errorCode;
+        StatusCode = statusCode;
+    }
 }

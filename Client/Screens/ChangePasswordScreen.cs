@@ -6,34 +6,65 @@ namespace Client.Screens;
 
 public static class ChangePasswordScreen
 {
-    public static async Task<bool> RunAsync(RestClient client)
+    public static async Task<bool> RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Change Password");
         Console.WriteLine("You must change your password before continuing.");
         ConsoleHelper.PrintDivider();
 
         Console.Write("Current password: ");
-        var currentPassword = ReadPassword();
-
-        Console.Write("New password: ");
-        var newPassword = ReadPassword();
-
-        Console.Write("Confirm new password: ");
-        var confirmPassword = ReadPassword();
-
-        if (newPassword != confirmPassword)
+        var password = string.Empty;
+        ConsoleKeyInfo key;
+        while ((key = Console.ReadKey(intercept: true)).Key != ConsoleKey.Enter)
         {
-            ConsoleHelper.PrintError("New passwords do not match.");
-            return false;
+            if (key.Key == ConsoleKey.Backspace && password.Length > 0)
+            {
+                password = password[..^1];
+                Console.Write("\b \b");
+            }
+            else if (!char.IsControl(key.KeyChar))
+            {
+                password += key.KeyChar;
+                Console.Write('*');
+            }
+        }
+        Console.WriteLine();
+        var currentPassword = password;
+
+        var newPassword = FormInputHelper.PromptPassword("New password");
+
+        while (true)
+        {
+            Console.Write("Confirm new password: ");
+            var confirmPassword = string.Empty;
+            while ((key = Console.ReadKey(intercept: true)).Key != ConsoleKey.Enter)
+            {
+                if (key.Key == ConsoleKey.Backspace && confirmPassword.Length > 0)
+                {
+                    confirmPassword = confirmPassword[..^1];
+                    Console.Write("\b \b");
+                }
+                else if (!char.IsControl(key.KeyChar))
+                {
+                    confirmPassword += key.KeyChar;
+                    Console.Write('*');
+                }
+            }
+            Console.WriteLine();
+
+            if (newPassword == confirmPassword)
+                break;
+
+            ConsoleHelper.PrintError("Passwords do not match.");
         }
 
         try
         {
-            var result = await client.PostAsync<LoginResponse>("/api/auth/change-password", new ChangePasswordRequest
+            var result = await clients.Auth.ChangePasswordAsync(new ChangePasswordRequest
             {
                 CurrentPassword = currentPassword,
                 NewPassword = newPassword
-            }, requireAuth: true);
+            });
 
             if (result is null)
             {
@@ -49,7 +80,7 @@ public static class ChangePasswordScreen
                 result.EmployeeId,
                 result.ManagerId,
                 result.ForcePasswordChange);
-            client.SetToken(result.Token);
+            clients.SetToken(result.Token);
             ConsoleHelper.PrintSuccess("Password changed successfully.");
             return true;
         }
@@ -58,28 +89,5 @@ public static class ChangePasswordScreen
             ErrorDisplayHelper.HandleException(ex);
             return false;
         }
-    }
-
-    private static string ReadPassword()
-    {
-        var password = string.Empty;
-        ConsoleKeyInfo key;
-
-        while ((key = Console.ReadKey(intercept: true)).Key != ConsoleKey.Enter)
-        {
-            if (key.Key == ConsoleKey.Backspace && password.Length > 0)
-            {
-                password = password[..^1];
-                Console.Write("\b \b");
-            }
-            else if (!char.IsControl(key.KeyChar))
-            {
-                password += key.KeyChar;
-                Console.Write('*');
-            }
-        }
-
-        Console.WriteLine();
-        return password;
     }
 }

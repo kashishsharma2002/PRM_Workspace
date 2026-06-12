@@ -1,4 +1,4 @@
-using Server.Services.Ai.Models;
+using Server.Models.DTOs.Ai.Context;
 
 namespace Server.Repositories.Ai;
 

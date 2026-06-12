@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class UpdateProjectScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Update Project Details");
 
@@ -18,7 +18,7 @@ public static class UpdateProjectScreen
 
         try
         {
-            var detail = await client.GetAsync<ProjectDetail>($"/api/projects/{projectId}", requireAuth: true);
+            var detail = await clients.Admin.GetProjectAsync(projectId);
             if (detail is null)
             {
                 ConsoleHelper.PrintError("Project not found.");
@@ -76,7 +76,7 @@ public static class UpdateProjectScreen
             if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
                 return;
 
-            await client.PutAsync<object>($"/api/projects/{projectId}", new UpdateProjectRequest
+            await clients.Admin.UpdateProjectAsync(projectId, new UpdateProjectRequest
             {
                 ProjectName = name,
                 Description = string.IsNullOrWhiteSpace(description) ? detail.Description : description,
@@ -85,7 +85,7 @@ public static class UpdateProjectScreen
                 ProjectStatus = status,
                 ManagerUserId = managerId,
                 TotalStoryPoints = storyPoints
-            }, requireAuth: true);
+            });
 
             ConsoleHelper.PrintSuccess("Project updated.");
         }

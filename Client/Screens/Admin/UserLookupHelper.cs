@@ -4,9 +4,9 @@ namespace Client.Screens.Admin;
 
 internal static class UserLookupHelper
 {
-    public static async Task<UserListItem?> ResolveUserAsync(RestClient client, string input)
+    public static async Task<UserListItem?> ResolveUserAsync(AppClients clients, string input)
     {
-        var list = await client.GetAsync<UserListResponse>("/api/users", requireAuth: true);
+        var list = await clients.Admin.GetUsersAsync();
         if (list is null)
             return null;
 

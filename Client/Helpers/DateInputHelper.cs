@@ -31,14 +31,19 @@ public static class DateInputHelper
         return today.AddDays(-daysSinceMonday);
     }
 
-    public static bool TryParseWeekStart(string? input, out DateOnly weekStart, out string? error)
+    public static DateOnly GetMostRecentCompletedWeekMonday()
+    {
+        return GetLastMonday().AddDays(-7);
+    }
+
+    public static bool TryParseWeekStart(string? input, out DateOnly weekStart, out string? error, DateOnly? defaultWeekStart = null)
     {
         weekStart = default;
         error = null;
 
         if (string.IsNullOrWhiteSpace(input))
         {
-            weekStart = GetLastMonday();
+            weekStart = defaultWeekStart ?? GetLastMonday();
             return true;
         }
 

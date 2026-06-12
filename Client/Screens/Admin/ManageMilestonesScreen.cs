@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class ManageMilestonesScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Milestones");
 
@@ -20,7 +20,7 @@ public static class ManageMilestonesScreen
         {
             while (true)
             {
-                var list = await client.GetAsync<MilestoneListResponse>($"/api/projects/{projectId}/milestones", requireAuth: true);
+                var list = await clients.Admin.GetMilestonesAsync(projectId);
                 if (list is null)
                 {
                     ConsoleHelper.PrintError("Project not found.");
@@ -49,10 +49,10 @@ public static class ManageMilestonesScreen
                 switch (choice)
                 {
                     case "1":
-                        await AddMilestoneAsync(client, projectId);
+                        await AddMilestoneAsync(clients, projectId);
                         break;
                     case "2":
-                        await UpdateStatusAsync(client, projectId, list.Milestones);
+                        await UpdateStatusAsync(clients, projectId, list.Milestones);
                         break;
                     case "3":
                     case "0":
@@ -67,7 +67,7 @@ public static class ManageMilestonesScreen
         catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
     }
 
-    private static async Task AddMilestoneAsync(RestClient client, long projectId)
+    private static async Task AddMilestoneAsync(AppClients clients, long projectId)
     {
         Console.Write("Milestone Title  : ");
         var title = Console.ReadLine()?.Trim() ?? string.Empty;
@@ -86,17 +86,17 @@ public static class ManageMilestonesScreen
             return;
         }
 
-        await client.PostAsync<object>($"/api/projects/{projectId}/milestones", new CreateMilestoneRequest
+        await clients.Admin.CreateMilestoneAsync(projectId, new CreateMilestoneRequest
         {
             MilestoneTitle = title,
             DueDate = DateOnly.Parse(dueIso),
             StoryPoints = points
-        }, requireAuth: true);
+        });
 
         ConsoleHelper.PrintSuccess("Milestone added.");
     }
 
-    private static async Task UpdateStatusAsync(RestClient client, long projectId, List<MilestoneListItem> milestones)
+    private static async Task UpdateStatusAsync(AppClients clients, long projectId, List<MilestoneListItem> milestones)
     {
         if (milestones.Count == 0)
         {
@@ -128,10 +128,10 @@ public static class ManageMilestonesScreen
         }
 
         var milestone = milestones[index - 1];
-        await client.PutAsync<object>(
-            $"/api/projects/{projectId}/milestones/{milestone.Id}",
-            new UpdateMilestoneStatusRequest { MilestoneStatus = status },
-            requireAuth: true);
+        await clients.Admin.UpdateMilestoneStatusAsync(
+            projectId,
+            milestone.Id,
+            new UpdateMilestoneStatusRequest { MilestoneStatus = status });
 
         ConsoleHelper.PrintSuccess("Milestone updated.");
     }

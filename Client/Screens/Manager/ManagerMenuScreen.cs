@@ -5,13 +5,14 @@ namespace Client.Screens.Manager;
 
 public static class ManagerMenuScreen
 {
-    public static async Task<bool> RunAsync(RestClient client)
+    public static async Task<bool> RunAsync(AppClients clients)
     {
         while (true)
         {
-            ConsoleHelper.PrintHeader("Manager Main Menu");
-            Console.WriteLine($"Logged in as: {SessionStore.FullName}");
-            ConsoleHelper.PrintDivider();
+            ConsoleHelper.PrintBoxHeader(
+                "MANAGER PANEL",
+                $"Welcome, {SessionStore.FullName}  |  {DateTime.Now:dd-MM-yyyy HH:mm}"
+            );
             Console.WriteLine("1. Resource Dashboard");
             Console.WriteLine("2. Allocate Resource");
             Console.WriteLine("3. My Projects");
@@ -27,23 +28,23 @@ public static class ManagerMenuScreen
                 switch (choice)
                 {
                     case "1":
-                        await ResourceDashboardScreen.RunAsync(client);
+                        await ResourceDashboardScreen.RunAsync(clients);
                         break;
                     case "2":
-                        await AllocateResourceScreen.RunAsync(client);
+                        await AllocateResourceScreen.RunAsync(clients);
                         break;
                     case "5":
-                        await AiAssistantScreen.RunAsync(client);
+                        await AiAssistantScreen.RunAsync(clients);
                         break;
                     case "3":
-                        await MyProjectsScreen.RunAsync(client);
+                        await MyProjectsScreen.RunAsync(clients);
                         break;
                     case "4":
-                        await TimesheetsScreen.RunAsync(client);
+                        await TimesheetsScreen.RunAsync(clients);
                         break;
                     case "0":
                         SessionStore.Clear();
-                        client.SetToken(null);
+                        clients.SetToken(null);
                         ConsoleHelper.PrintSuccess("Logged out.");
                         return false;
                     default:

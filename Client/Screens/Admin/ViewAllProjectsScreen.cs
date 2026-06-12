@@ -5,11 +5,11 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllProjectsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
-            var list = await client.GetAsync<ProjectListResponse>("/api/projects", requireAuth: true);
+            var list = await clients.Admin.GetProjectsAsync();
             if (list is null)
             {
                 ConsoleHelper.PrintError("Failed to load projects.");

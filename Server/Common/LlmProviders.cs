@@ -1,9 +1,11 @@
+using Server.AI.Configuration;
+
 namespace Server.Common;
 
+[Obsolete("Use Server.AI.Configuration.LlmProviderKeys instead.")]
 public static class LlmProviders
 {
-    public const string Gemini = "GEMINI";
-    public const string Groq = "GROQ";
-    public const string Gemma = "GEMMA";
+    public const string Gemini = LlmProviderKeys.Gemini;
+    public const string Groq = LlmProviderKeys.Groq;
+    public const string Gemma = LlmProviderKeys.Gemma;
 }
-

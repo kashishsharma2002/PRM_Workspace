@@ -5,6 +5,8 @@ namespace Server.Repositories.Timesheets;
 public interface ITimesheetRepository
 {
     Task<bool> ExistsForWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default);
+    Task<bool> HasSubmittedForWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default);
+    Task<Timesheet?> GetByEmployeeAndWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<long>> GetEmployeeIdsWithTimesheetForWeekAsync(
         IEnumerable<long> employeeIds,
         DateOnly weekStart,

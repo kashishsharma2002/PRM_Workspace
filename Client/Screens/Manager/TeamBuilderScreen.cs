@@ -11,7 +11,7 @@ public static class TeamBuilderScreen
         "a DevOps Engineer with intermediate Docker and beginner Kubernetes, " +
         "and a QA Tester with intermediate manual testing and beginner Selenium.";
 
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Team Builder with Skill Match");
         Console.WriteLine("\nDescribe your team requirement in plain English");
@@ -27,9 +27,8 @@ public static class TeamBuilderScreen
         }
 
         Console.WriteLine("\nSearching... (calling AI)");
-        var url = $"/api/ai/team-builder?requirement={Uri.EscapeDataString(requirement)}";
 
-        var response = await client.GetAsync<TeamBuilderResponse>(url, requireAuth: true);
+        var response = await clients.Ai.BuildTeamAsync(requirement);
         if (response is null || response.Roles.Count == 0)
         {
             ConsoleHelper.PrintError("No AI team builder results found or server error occurred.");

@@ -12,10 +12,10 @@ internal static class ManagerProjectPicker
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static async Task<ManagerProjectListItem?> PromptByNameOrIdAsync(
-        RestClient client,
+        AppClients clients,
         string stepLabel = "Step 1 — Select Project")
     {
-        var projectsResponse = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+        var projectsResponse = await clients.Manager.GetMyProjectsAsync();
         if (projectsResponse is null || projectsResponse.Projects.Count == 0)
         {
             Console.WriteLine("No projects found.");

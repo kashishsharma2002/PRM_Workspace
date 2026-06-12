@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllAllocationsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
@@ -13,7 +13,7 @@ public static class ViewAllAllocationsScreen
             Console.Write("[F] Filter  [Enter] Show active — choice: ");
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-            string endpoint = "/api/allocations";
+            string? query = null;
             if (action == "F")
             {
                 Console.Write("Employee ID (blank for all): ");
@@ -21,16 +21,16 @@ public static class ViewAllAllocationsScreen
                 Console.Write("Project ID (blank for all): ");
                 var projInput = Console.ReadLine()?.Trim();
 
-                var query = new List<string>();
+                var queryParts = new List<string>();
                 if (long.TryParse(empInput, out var empId))
-                    query.Add($"employeeId={empId}");
+                    queryParts.Add($"employeeId={empId}");
                 if (long.TryParse(projInput, out var projId))
-                    query.Add($"projectId={projId}");
-                if (query.Count > 0)
-                    endpoint += "?" + string.Join("&", query);
+                    queryParts.Add($"projectId={projId}");
+                if (queryParts.Count > 0)
+                    query = string.Join("&", queryParts);
             }
 
-            var list = await client.GetAsync<AllocationListResponse>(endpoint, requireAuth: true);
+            var list = await clients.Admin.GetAllocationsAsync(query);
             if (list is null)
             {
                 ConsoleHelper.PrintError("Failed to load allocations.");

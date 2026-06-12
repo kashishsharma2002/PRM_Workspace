@@ -5,11 +5,11 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllUsersScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
-            var list = await client.GetAsync<UserListResponse>("/api/users", requireAuth: true);
+            var list = await clients.Admin.GetUsersAsync();
             if (list is null)
             {
                 ConsoleHelper.PrintError("Failed to load users.");
@@ -33,7 +33,7 @@ public static class ViewAllUsersScreen
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
             if (action == "R")
-                await ReactivateUserAsync(client, list);
+                await ReactivateUserAsync(clients, list);
         }
         catch (SessionExpiredException ex)
         {
@@ -46,7 +46,7 @@ public static class ViewAllUsersScreen
         }
     }
 
-    private static async Task ReactivateUserAsync(RestClient client, UserListResponse list)
+    private static async Task ReactivateUserAsync(AppClients clients, UserListResponse list)
     {
         Console.Write("Enter User ID to reactivate: ");
         if (!long.TryParse(Console.ReadLine()?.Trim(), out var userId))
@@ -78,7 +78,7 @@ public static class ViewAllUsersScreen
 
         try
         {
-            await client.PutAsync<object>($"/api/users/{userId}/reactivate", new { }, requireAuth: true);
+            await clients.Admin.ReactivateUserAsync(userId);
             ConsoleHelper.PrintSuccess(
                 $"Account reactivated. {user.FullName} can now log in.");
             Console.WriteLine(

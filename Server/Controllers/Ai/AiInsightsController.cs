@@ -6,7 +6,7 @@ using Server.Common;
 using Server.Common.Errors;
 using Server.Common.Roles;
 using Server.Models.DTOs.Ai;
-using Server.Services.Ai;
+using Server.Services.Ai.Abstractions;
 using Server.Validators.Ai;
 
 namespace Server.Controllers.Ai;

@@ -65,30 +65,44 @@ public class RestClient
 
     private static async Task<T?> HandleResponse<T>(HttpResponseMessage response)
     {
-        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        try
         {
-            var unauthorizedEnvelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
-            var message = unauthorizedEnvelope?.Error ?? "Invalid username or password.";
-
-            if (!string.IsNullOrWhiteSpace(SessionStore.Token))
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
-                SessionStore.Clear();
-                throw new SessionExpiredException("Session expired. Please log in again.");
+                var unauthorizedEnvelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
+                var message = unauthorizedEnvelope?.Error ?? "Invalid username or password.";
+
+                if (!string.IsNullOrWhiteSpace(SessionStore.Token))
+                {
+                    SessionStore.Clear();
+                    throw new SessionExpiredException("Session expired. Please log in again.");
+                }
+
+                throw new ApiClientException(message, unauthorizedEnvelope?.ErrorCode, (int)response.StatusCode);
             }
 
-            throw new ApiClientException(message, unauthorizedEnvelope?.ErrorCode, (int)response.StatusCode);
+            var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
+            if (envelope is null)
+                throw new ApiClientException("Empty response from server.", null, (int)response.StatusCode);
+
+            if (!response.IsSuccessStatusCode || !envelope.Success)
+            {
+                var details = envelope.Details is not null ? string.Join("; ", envelope.Details) : envelope.Error;
+                throw new ApiClientException(details ?? "Request failed.", envelope.ErrorCode, (int)response.StatusCode);
+            }
+
+            return envelope.Data;
         }
-
-        var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
-        if (envelope is null)
-            throw new ApiClientException("Empty response from server.", null, (int)response.StatusCode);
-
-        if (!response.IsSuccessStatusCode || !envelope.Success)
+        catch (JsonException ex)
         {
-            var details = envelope.Details is not null ? string.Join("; ", envelope.Details) : envelope.Error;
-            throw new ApiClientException(details ?? "Request failed.", envelope.ErrorCode, (int)response.StatusCode);
+            var contentPreview = await response.Content.ReadAsStringAsync();
+            var preview = contentPreview.Length > 100 ? $"{contentPreview[..100]}..." : contentPreview;
+            throw new ApiClientException(
+                $"Server returned an unexpected response (HTTP {(int)response.StatusCode}). " +
+                $"This may indicate an API route mismatch or server error. Response: {preview}",
+                "INVALID_JSON_RESPONSE",
+                (int)response.StatusCode,
+                ex);
         }
-
-        return envelope.Data;
     }
 }

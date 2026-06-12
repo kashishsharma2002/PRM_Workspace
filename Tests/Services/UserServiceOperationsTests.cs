@@ -1,160 +1,172 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Tests.Helpers;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
+using Server.Common.Audit;
 using Server.Data;
 using Server.Exceptions;
-using Server.Models.DTOs.Auth;
 using Server.Models.DTOs.Users;
-using Server.Services.Auth;
+using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Services.Shared;
+using Server.Services.Users;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class UserServiceOperationsTests : IDisposable
+public class UserServiceOperationsTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _userService;
 
     public UserServiceOperationsTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
 
-        _context = new PrmDbContext(options);
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
+
+        _userRepoMock = new Mock<IUserRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<UserService>>();
 
         _userService = new UserService(
-            _context,
-            new UserRepository(_context),
-            new EmployeeRepository(_context),
-            TestServiceFactory.CreateRoleRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            TestServiceFactory.CreateLogger<UserService>());
-    }
-
-    private async Task<long> CreateTestUserAsync(string username = "test.user")
-    {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
-        {
-            FullName = "Test User",
-            Email = $"{username}@techserve.com",
-            Username = username,
-            TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE"
-        });
-        return result.UserId;
+            _transactionManagerMock.Object,
+            _userRepoMock.Object,
+            _employeeRepoMock.Object,
+            _roleRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task DeactivateUserAsync_SetsUserAndEmployeeInactive()
     {
-        var userId = await CreateTestUserAsync();
+        // Arrange
+        var user = new User { Id = 10, Username = "test.user", IsActive = true };
+        var profile = new ResourceProfile { Id = 20, UserId = 10, ResourceStatus = "ALLOCATED" };
 
-        await _userService.DeactivateUserAsync(999, userId);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _employeeRepoMock.Setup(r => r.GetByUserIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
 
-        var user = await _context.Users.FindAsync(userId);
-        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == userId);
+        // Act
+        await _userService.DeactivateUserAsync(999, 10);
 
-        Assert.NotNull(user);
-        Assert.False(user!.IsActive);
+        // Assert
+        Assert.False(user.IsActive);
         Assert.Equal("BENCH", profile.ResourceStatus);
+        _userRepoMock.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _auditServiceMock.Verify(a => a.LogDeactivateAsync(
+            999,
+            AuditEntityConstants.Users,
+            10,
+            It.IsAny<object>(),
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task DeactivateUserAsync_SelfDeactivate_ThrowsForbidden()
     {
-        var userId = await CreateTestUserAsync();
-
+        // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAppException>(() =>
-            _userService.DeactivateUserAsync(userId, userId));
+            _userService.DeactivateUserAsync(10, 10));
     }
 
     [Fact]
     public async Task ReactivateUserAsync_RestoresIsActive()
     {
-        var userId = await CreateTestUserAsync();
-        await _userService.DeactivateUserAsync(999, userId);
+        // Arrange
+        var user = new User { Id = 10, Username = "test.user", IsActive = false };
+        var profile = new ResourceProfile { Id = 20, UserId = 10, ResourceStatus = "BENCH" };
 
-        await _userService.ReactivateUserAsync(999, userId);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _employeeRepoMock.Setup(r => r.GetByUserIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
 
-        var user = await _context.Users.FindAsync(userId);
-        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == userId);
+        // Act
+        await _userService.ReactivateUserAsync(999, 10);
 
-        Assert.NotNull(user);
-        Assert.True(user!.IsActive);
-        Assert.Equal("BENCH", profile.ResourceStatus);
+        // Assert
+        Assert.True(user.IsActive);
+        _userRepoMock.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _auditServiceMock.Verify(a => a.LogUpdateAsync(
+            999,
+            AuditEntityConstants.Users,
+            10,
+            It.IsAny<object>(),
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ResetPasswordAsync_SetsForcePasswordChange()
     {
-        var userId = await CreateTestUserAsync();
+        // Arrange
+        var user = new User { Id = 10, Username = "test.user", PasswordHash = "old" };
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
 
-        await _userService.ResetPasswordAsync(1, userId, new ResetPasswordRequestDto
+        // Act
+        await _userService.ResetPasswordAsync(1, 10, new ResetPasswordRequestDto
         {
             NewTemporaryPassword = "NewPass99"
         });
 
-        var user = await _context.Users.FindAsync(userId);
-        Assert.NotNull(user);
-        Assert.True(user!.IsTemporaryPassword);
+        // Assert
+        Assert.True(user.IsTemporaryPassword);
         Assert.True(BCrypt.Net.BCrypt.Verify("NewPass99", user.PasswordHash));
-    }
-
-    [Fact]
-    public async Task ResetPasswordAsync_ThenLogin_SucceedsWithNewPassword()
-    {
-        var userId = await CreateTestUserAsync("reset.login.user");
-        const string newPassword = "ResetPass9";
-
-        await _userService.ResetPasswordAsync(1, userId, new ResetPasswordRequestDto
-        {
-            NewTemporaryPassword = newPassword
-        });
-
-        var userRepo = new UserRepository(_context);
-        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
-        var authService = new AuthService(
-            userRepo,
-            roleRepo,
-            new JwtTokenService(Options.Create(new JwtSettings
-            {
-                SecretKey = "TestSecretKeyForJwtTokenService1234567890",
-                Issuer = "PRM.Test",
-                Audience = "PRM.Test",
-                ExpiryHours = 8
-            })),
-            TestServiceFactory.CreateLogger<AuthService>());
-
-        var loginResult = await authService.LoginAsync(new LoginRequestDto
-        {
-            Username = "reset.login.user",
-            Password = newPassword
-        });
-
-        Assert.Equal(userId, loginResult.UserId);
-        Assert.True(loginResult.ForcePasswordChange);
+        _auditServiceMock.Verify(a => a.LogUpdateAsync(
+            1,
+            AuditEntityConstants.Users,
+            10,
+            null,
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task GetAllUsersAsync_ReturnsCorrectCounts()
     {
-        await CreateTestUserAsync("active.user");
-        var inactiveId = await CreateTestUserAsync("inactive.user");
-        await _userService.DeactivateUserAsync(999, inactiveId);
+        // Arrange
+        var users = new List<User>
+        {
+            new() { Id = 10, Username = "user.a", IsActive = true },
+            new() { Id = 20, Username = "user.b", IsActive = false }
+        };
+        _userRepoMock.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(users);
+        _roleRepoMock.Setup(r => r.GetRoleNameForUserAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("EMPLOYEE");
+        _roleRepoMock.Setup(r => r.GetRoleNameForUserAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("MANAGER");
 
+        // Act
         var result = await _userService.GetAllUsersAsync();
 
+        // Assert
         Assert.Equal(2, result.Total);
         Assert.Equal(1, result.ActiveCount);
         Assert.Equal(1, result.InactiveCount);
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
     }
 }

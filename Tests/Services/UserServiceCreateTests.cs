@@ -1,78 +1,115 @@
 using Microsoft.EntityFrameworkCore;
-using Tests.Helpers;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
+using Server.Common.Audit;
 using Server.Common.Roles;
 using Server.Data;
 using Server.Exceptions;
 using Server.Models.DTOs.Users;
+using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Services.Shared;
+using Server.Services.Users;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class UserServiceCreateTests : IDisposable
+public class UserServiceCreateTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<UserService>> _loggerMock;
     private readonly UserService _userService;
 
     public UserServiceCreateTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
+        
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
 
-        _context = new PrmDbContext(options);
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        _userRepoMock = new Mock<IUserRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<UserService>>();
 
         _userService = new UserService(
-            _context,
-            new UserRepository(_context),
-            new EmployeeRepository(_context),
-            TestServiceFactory.CreateRoleRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            TestServiceFactory.CreateLogger<UserService>());
+            _transactionManagerMock.Object,
+            _userRepoMock.Object,
+            _employeeRepoMock.Object,
+            _roleRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task CreateUserAccountAsync_CreatesUserAndEmployeeAtomically()
     {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
+        // Arrange
+        var request = new CreateUserRequestDto
         {
             FullName = "Priya Sharma",
-            Email = "priya.sharma@techserve.com",
+            Email = "priya.sharma@example.com",
             Username = "priya.sharma",
             TemporaryPassword = "Welcome1",
             Role = "EMPLOYEE",
             Department = DepartmentConstants.SoftwareDevelopment,
             Designation = DesignationConstants.Jse
-        });
+        };
 
-        Assert.True(result.UserId > 0);
-        Assert.True(result.EmployeeId > 0);
-        Assert.Equal($"EMP-{result.UserId:D6}", result.EmployeeCode);
+        _userRepoMock.Setup(u => u.ExistsByUsernameOrEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
-        var user = await _context.Users.FindAsync(result.UserId);
-        var profile = await _context.ResourceProfiles.FindAsync(result.EmployeeId);
-        var auditCount = await _context.AuditLogs.CountAsync();
-        var role = await TestServiceFactory.CreateRoleRepository(_context)
-            .GetRoleNameForUserAsync(result.UserId);
+        _roleRepoMock.Setup(r => r.GetByNameAsync("EMPLOYEE", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Role { Id = 3, RoleName = RoleConstants.Employee });
 
-        Assert.NotNull(user);
-        Assert.NotNull(profile);
-        Assert.Equal(RoleConstants.Employee, role);
-        Assert.True(user!.IsTemporaryPassword);
-        Assert.Equal(user.Id, profile!.UserId);
-        Assert.Equal("BENCH", profile.ResourceStatus);
-        Assert.Equal(1, auditCount);
+        _userRepoMock.Setup(u => u.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, c) => u.Id = 10);
+
+        _employeeRepoMock.Setup(e => e.AddAsync(It.IsAny<ResourceProfile>(), It.IsAny<CancellationToken>()))
+            .Callback<ResourceProfile, CancellationToken>((e, c) => e.Id = 20);
+
+        // Act
+        var result = await _userService.CreateUserAccountAsync(1, request);
+
+        // Assert
+        Assert.Equal(10, result.UserId);
+        Assert.Equal(20, result.EmployeeId);
+        Assert.Equal("EMP-000010", result.EmployeeCode);
+
+        _userRepoMock.Verify(u => u.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(e => e.AddAsync(It.IsAny<ResourceProfile>(), It.IsAny<CancellationToken>()), Times.Once);
+        _roleRepoMock.Verify(r => r.AssignRoleAsync(10, 3, 1, It.IsAny<CancellationToken>()), Times.Once);
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _auditServiceMock.Verify(a => a.LogCreateAsync(
+            1,
+            AuditEntityConstants.Users,
+            10,
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task CreateUserAccountAsync_DuplicateUsername_ThrowsConflict()
     {
+        // Arrange
         var request = new CreateUserRequestDto
         {
             FullName = "First User",
-            Email = "first@techserve.com",
+            Email = "duplicate.user@example.com",
             Username = "duplicate.user",
             TemporaryPassword = "Welcome1",
             Role = "MANAGER",
@@ -80,25 +117,13 @@ public class UserServiceCreateTests : IDisposable
             Designation = DesignationConstants.DeliveryManager
         };
 
-        await _userService.CreateUserAccountAsync(1, request);
+        _userRepoMock.Setup(u => u.ExistsByUsernameOrEmailAsync("duplicate.user", "duplicate.user@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
-        var duplicate = new CreateUserRequestDto
-        {
-            FullName = "Second User",
-            Email = "second@techserve.com",
-            Username = "duplicate.user",
-            TemporaryPassword = "Welcome2",
-            Role = "EMPLOYEE",
-            Department = DepartmentConstants.Qa,
-            Designation = DesignationConstants.SoftwareEngineer
-        };
-
+        // Act & Assert
         await Assert.ThrowsAsync<ConflictAppException>(() =>
-            _userService.CreateUserAccountAsync(1, duplicate));
-    }
+            _userService.CreateUserAccountAsync(1, request));
 
-    public void Dispose()
-    {
-        _context.Dispose();
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -1,6 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
-using Server.AI;
+using Server.AI.Infrastructure;
 using Server.Common.Errors;
 using Server.Exceptions;
 

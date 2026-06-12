@@ -5,24 +5,31 @@ namespace Client.Screens.Employee;
 
 public static class SubmitTimesheetScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients, DateOnly? defaultWeekStart = null)
     {
         try
         {
             ConsoleHelper.PrintHeader("Submit Timesheet");
-            Console.WriteLine("Week Start: Enter date (DD-MM-YYYY) or press Enter for last Monday");
+            if (defaultWeekStart is not null)
+            {
+                Console.WriteLine(
+                    $"Week Start: Enter date (DD-MM-YYYY) or press Enter for {DateInputHelper.FormatDisplay(defaultWeekStart.Value)} (missed week)");
+            }
+            else
+            {
+                Console.WriteLine("Week Start: Enter date (DD-MM-YYYY) or press Enter for last Monday");
+            }
+
             Console.Write("> ");
             var weekInput = Console.ReadLine();
 
-            if (!DateInputHelper.TryParseWeekStart(weekInput, out var weekStart, out var dateError))
+            if (!DateInputHelper.TryParseWeekStart(weekInput, out var weekStart, out var dateError, defaultWeekStart))
             {
                 ConsoleHelper.PrintError(dateError ?? "Invalid week start date.");
                 return;
             }
 
-            var allocations = await client.GetAsync<List<EmployeeWeekAllocation>>(
-                $"/api/timesheets/week-allocations?weekStart={weekStart:yyyy-MM-dd}",
-                requireAuth: true);
+            var allocations = await clients.Employee.GetWeekAllocationsAsync(weekStart);
 
             if (allocations is null || allocations.Count == 0)
             {
@@ -30,7 +37,7 @@ public static class SubmitTimesheetScreen
                 return;
             }
 
-            var tags = await client.GetAsync<List<ActivityTagItem>>("/api/activity-tags", requireAuth: true);
+            var tags = await clients.Employee.GetActivityTagsAsync();
             if (tags is null || tags.Count == 0)
             {
                 ConsoleHelper.PrintError("Activity tags could not be loaded.");
@@ -124,7 +131,7 @@ public static class SubmitTimesheetScreen
                 LineItems = lineItems
             };
 
-            var response = await client.PostAsync<TimesheetSubmitResponse>("/api/timesheets", request, requireAuth: true);
+            var response = await clients.Employee.SubmitTimesheetAsync(request);
             if (response is null)
             {
                 ConsoleHelper.PrintError("Failed to submit timesheet.");

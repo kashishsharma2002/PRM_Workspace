@@ -5,16 +5,16 @@ namespace Client.Screens.Admin;
 
 public static class AssignManagerScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Assign Manager");
-        Console.WriteLine("Use User IDs from All Users (not Emp ID from All Employees).");
+        Console.WriteLine("Enter the Resource Profile ID from All Employees/Resources.");
         Console.WriteLine();
 
-        Console.Write("Employee User ID : ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeUserId))
+        Console.Write("Employee/Resource ID : ");
+        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeProfileId))
         {
-            ConsoleHelper.PrintError("Invalid employee user ID.");
+            ConsoleHelper.PrintError("Invalid employee/resource ID.");
             return;
         }
 
@@ -27,16 +27,16 @@ public static class AssignManagerScreen
 
         try
         {
-            var list = await client.GetAsync<EmployeeListResponse>("/api/employees", requireAuth: true);
-            var employee = list?.Employees.FirstOrDefault(e => e.UserId == employeeUserId);
+            var list = await clients.Admin.GetEmployeesAsync();
+            var employee = list?.Employees.FirstOrDefault(e => e.Id == employeeProfileId);
             if (employee is null)
             {
                 ConsoleHelper.PrintError(
-                    "Employee not found for that User ID. Check All Users — do not use Emp ID from All Employees.");
+                    "Employee/Resource not found for that ID. Check All Employees/Resources.");
                 return;
             }
 
-            var manager = await UserLookupHelper.ResolveUserAsync(client, managerUserId.ToString());
+            var manager = await UserLookupHelper.ResolveUserAsync(clients, managerUserId.ToString());
             if (manager is null)
             {
                 ConsoleHelper.PrintError("Manager user not found. Check the ID in All Users.");
@@ -50,22 +50,21 @@ public static class AssignManagerScreen
             }
 
             if (!employee.IsActive)
-                Console.WriteLine("\n[NOTE] This employee is inactive and will not appear on the manager's dashboard.");
+                Console.WriteLine("\n[NOTE] This employee/resource is inactive and will not appear on the manager's dashboard.");
 
             ConsoleHelper.PrintDivider();
-            Console.WriteLine($"Employee : {employee.FullName} (User ID {employee.UserId}, Resource Profile ID {employee.Id})");
-            Console.WriteLine($"Manager  : {manager.FullName} (User ID {manager.Id})");
+            Console.WriteLine($"Employee/Resource : {employee.FullName} (Profile ID {employee.Id}, User ID {employee.UserId})");
+            Console.WriteLine($"Manager           : {manager.FullName} (User ID {manager.Id})");
             ConsoleHelper.PrintDivider();
             Console.Write("[S] Save  [B] Back — choice: ");
             if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
                 return;
 
-            await client.PutAsync<object>(
-                $"/api/employees/{employee.Id}/manager",
-                new AssignManagerRequest { ManagerUserId = managerUserId },
-                requireAuth: true);
+            await clients.Admin.AssignManagerAsync(
+                employee.Id,
+                new AssignManagerRequest { ManagerUserId = managerUserId });
 
-            ConsoleHelper.PrintSuccess($"Manager assigned. {manager.FullName} will see this employee after logging in.");
+            ConsoleHelper.PrintSuccess($"Manager assigned. {manager.FullName} will see this employee/resource after logging in.");
         }
         catch (SessionExpiredException)
         {

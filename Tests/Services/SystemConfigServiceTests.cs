@@ -1,93 +1,106 @@
-using Microsoft.EntityFrameworkCore;
-using Tests.Helpers;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.AspNetCore.DataProtection;
-using Server.Common;
-using Server.Data;
-using Server.Models.DTOs.SystemConfig;
-using Server.Models.Entities;
-
-namespace Tests;
-
-public class SystemConfigServiceTests : IDisposable
-{
-    private readonly PrmDbContext _context;
-    private readonly SystemConfigService _systemConfigService;
-
-    public SystemConfigServiceTests()
-    {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-
-        _context = new PrmDbContext(options);
-        SeedConfig();
-
-        var dataProtection = DataProtectionProvider.Create("Tests");
-        var encryption = new ConfigEncryptionHelper(dataProtection);
-        _systemConfigService = new SystemConfigService(
-            new SystemConfigRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            encryption,
-            TestServiceFactory.CreateLogger<SystemConfigService>());
-    }
-
-    private void SeedConfig()
-    {
-        var now = DateTime.UtcNow;
-        _context.SystemConfigurations.AddRange(
-            new SystemConfiguration { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = "Gemini", UpdatedAt = now },
-            new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "", UpdatedAt = now },
-            new SystemConfiguration { ConfigKey = ConfigKeys.SchedulerIntervalHours, ConfigValue = "4", UpdatedAt = now },
-            new SystemConfiguration { ConfigKey = ConfigKeys.MaxWeeklyHours, ConfigValue = "40", UpdatedAt = now });
-        _context.SaveChanges();
-    }
-
-    [Fact]
-    public async Task GetConfigAsync_MasksApiKeyWhenSet()
-    {
-        var config = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        config.ConfigValue = "plain-key";
-        await _context.SaveChangesAsync();
-
-        var result = await _systemConfigService.GetConfigAsync();
-
-        Assert.Equal("****************************", result.LlmApiKeyMasked);
-    }
-
-    [Fact]
-    public async Task UpdateConfigAsync_EncryptsApiKey()
-    {
-        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
-        {
-            LlmApiKey = "my-secret-key-123"
-        });
-
-        var stored = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        Assert.NotEqual("my-secret-key-123", stored.ConfigValue);
-        Assert.StartsWith(ConfigEncryptionHelper.EncryptedPrefix, stored.ConfigValue);
-    }
-
-    [Fact]
-    public async Task UpdateConfigAsync_ClearsApiKey_WhenEmptyStringProvided()
-    {
-        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
-        {
-            LlmApiKey = "my-secret-key-123"
-        });
-
-        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
-        {
-            LlmApiKey = string.Empty
-        });
-
-        var stored = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        Assert.Equal(string.Empty, stored.ConfigValue);
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
-    }
-}
+using Microsoft.Extensions.Logging;
+using Moq;
+using Server.Common;
+using Server.Common.Audit;
+using Server.Models.DTOs.SystemConfig;
+using Server.Models.Entities;
+using Server.Services.Shared;
+using Server.Services.SystemConfig;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace Tests.Services;
+
+public class SystemConfigServiceTests
+{
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<IConfigEncryptionHelper> _encryptionMock;
+    private readonly Mock<ILogger<SystemConfigService>> _loggerMock;
+    private readonly SystemConfigService _systemConfigService;
+
+    public SystemConfigServiceTests()
+    {
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _encryptionMock = new Mock<IConfigEncryptionHelper>();
+        _loggerMock = new Mock<ILogger<SystemConfigService>>();
+
+        _systemConfigService = new SystemConfigService(
+            _systemConfigRepoMock.Object,
+            _auditServiceMock.Object,
+            _encryptionMock.Object,
+            _loggerMock.Object);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_MasksApiKeyWhenSet()
+    {
+        // Arrange
+        var configs = new List<SystemConfiguration>
+        {
+            new() { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = "Gemini" },
+            new() { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "plain-key" },
+            new() { ConfigKey = ConfigKeys.SchedulerIntervalHours, ConfigValue = "4" },
+            new() { ConfigKey = ConfigKeys.MaxWeeklyHours, ConfigValue = "40" }
+        };
+        _systemConfigRepoMock.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(configs);
+
+        // Act
+        var result = await _systemConfigService.GetConfigAsync();
+
+        // Assert
+        Assert.Equal("****************************", result.LlmApiKeyMasked);
+    }
+
+    [Fact]
+    public async Task UpdateConfigAsync_EncryptsApiKey()
+    {
+        // Arrange
+        var config = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+        _encryptionMock.Setup(e => e.Encrypt("my-secret-key-123"))
+            .Returns("ENC:my-secret-key-123");
+
+        // Act
+        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
+        {
+            LlmApiKey = "my-secret-key-123"
+        });
+
+        // Assert
+        Assert.Equal("ENC:my-secret-key-123", config.ConfigValue);
+        _systemConfigRepoMock.Verify(r => r.UpdateAsync(config, It.IsAny<CancellationToken>()), Times.Once);
+        _systemConfigRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _auditServiceMock.Verify(a => a.LogUpdateAsync(
+            1,
+            AuditEntityConstants.SystemConfigurations,
+            0,
+            null,
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateConfigAsync_ClearsApiKey_WhenEmptyStringProvided()
+    {
+        // Arrange
+        var config = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "old-key" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+
+        // Act
+        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
+        {
+            LlmApiKey = string.Empty
+        });
+
+        // Assert
+        Assert.Equal(string.Empty, config.ConfigValue);
+        _systemConfigRepoMock.Verify(r => r.UpdateAsync(config, It.IsAny<CancellationToken>()), Times.Once);
+        _systemConfigRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+}

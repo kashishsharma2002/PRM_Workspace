@@ -5,12 +5,12 @@ namespace Client.Screens.Employee;
 
 public static class ViewTimesheetsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
             ConsoleHelper.PrintHeader("My Timesheets");
-            var timesheets = await client.GetAsync<List<TimesheetHistoryItem>>("/api/timesheets/my", requireAuth: true);
+            var timesheets = await clients.Employee.GetMyTimesheetsAsync();
             if (timesheets is null || timesheets.Count == 0)
             {
                 Console.WriteLine("No timesheets found.");
@@ -24,7 +24,7 @@ public static class ViewTimesheetsScreen
             ConsoleHelper.PrintDivider();
             foreach (var item in timesheets)
             {
-                var statusDisplay = item.Status == "MISSED" ? $"{item.Status} !" : item.Status;
+                var statusDisplay = item.Status == "MISSED" ? $"{item.Status}    ⚠" : item.Status;
                 Console.WriteLine($"{item.Id,-8}{DateInputHelper.FormatDisplay(item.WeekStartDate),-14}{item.TotalHours,5:0.#} hrs    {statusDisplay}");
             }
 
@@ -41,7 +41,7 @@ public static class ViewTimesheetsScreen
                 return;
             }
 
-            var detail = await client.GetAsync<TimesheetDetail>($"/api/timesheets/my/{timesheetId}", requireAuth: true);
+            var detail = await clients.Employee.GetMyTimesheetDetailAsync(timesheetId);
             if (detail is null)
             {
                 ConsoleHelper.PrintError("Timesheet not found.");

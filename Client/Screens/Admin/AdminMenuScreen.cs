@@ -1,18 +1,19 @@
-﻿using Client.Helpers;
+using Client.Helpers;
 using Client.HttpClients;
 
 namespace Client.Screens.Admin;
 
 public static class AdminMenuScreen
 {
-    public static async Task<bool> RunAsync(RestClient client)
+    public static async Task<bool> RunAsync(AppClients clients)
     {
         while (true)
         {
-            ConsoleHelper.PrintHeader("Admin Main Menu");
-            Console.WriteLine($"Logged in as: {SessionStore.FullName}");
-            ConsoleHelper.PrintDivider();
-            Console.WriteLine("1. Manage Employees");
+            ConsoleHelper.PrintBoxHeader(
+                "ADMIN PANEL",
+                $"Welcome, {SessionStore.FullName}  |  {DateTime.Now:dd-MM-yyyy HH:mm}"
+            );
+            Console.WriteLine("1. Manage Employees/Resources");
             Console.WriteLine("2. Manage Projects");
             Console.WriteLine("3. View All Allocations");
             Console.WriteLine("4. Manage Users");
@@ -27,23 +28,23 @@ public static class AdminMenuScreen
                 switch (choice)
                 {
                     case "1":
-                        await ManageEmployeesScreen.RunAsync(client);
+                        await ManageEmployeesScreen.RunAsync(clients);
                         break;
                     case "2":
-                        await ManageProjectsScreen.RunAsync(client);
+                        await ManageProjectsScreen.RunAsync(clients);
                         break;
                     case "3":
-                        await ViewAllAllocationsScreen.RunAsync(client);
+                        await ViewAllAllocationsScreen.RunAsync(clients);
                         break;
                     case "4":
-                        await ManageUsersScreen.RunAsync(client);
+                        await ManageUsersScreen.RunAsync(clients);
                         break;
                     case "5":
-                        await SystemConfigScreen.RunAsync(client);
+                        await SystemConfigScreen.RunAsync(clients);
                         break;
                     case "0":
                         SessionStore.Clear();
-                        client.SetToken(null);
+                        clients.SetToken(null);
                         ConsoleHelper.PrintSuccess("Logged out.");
                         return false;
                     default:

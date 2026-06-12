@@ -1,10 +1,11 @@
 using System.Text.Json;
+using Server.Models.DTOs.Ai.Context;
 using Server.Repositories.Ai;
-using Server.Services.Ai.Models;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class AiContextBuilder(IAiContextRepository aiContextRepository)
+public class AiContextBuilder(IAiContextRepository aiContextRepository) : IAiContextBuilder
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 

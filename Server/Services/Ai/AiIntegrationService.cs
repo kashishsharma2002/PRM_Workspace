@@ -1,15 +1,17 @@
 using Microsoft.Extensions.Logging;
-using Server.AI;
+using Server.AI.Abstractions;
+using Server.AI.Configuration;
 using Server.Common;
 using Server.Common.Ai;
 using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Ai;
+using Server.Models.DTOs.Ai.Context;
 using Server.Models.Entities;
 using Server.Repositories.Ai;
 using Server.Repositories.Projects;
 using Server.Repositories.SystemConfig;
-using Server.Services.Ai.Models;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
@@ -18,9 +20,11 @@ public class AiIntegrationService(
     ILlmClientFactory llmClientFactory,
     ISystemConfigRepository systemConfigRepository,
     IAiRequestLogRepository aiRequestLogRepository,
-    AiContextBuilder contextBuilder,
-    AiResponseParser responseParser,
-    TeamBuilderResponseNormalizer teamBuilderResponseNormalizer,
+    IAiContextBuilder contextBuilder,
+    IAiResponseParser responseParser,
+    ITeamBuilderResponseNormalizer teamBuilderResponseNormalizer,
+    SkillMatchCandidateFilter skillMatchCandidateFilter,
+    SkillMatchRanker skillMatchRanker,
     ILogger<AiIntegrationService> logger) : IAiIntegrationService
 {
     public async Task<AiRiskSummaryResponseDto> GetRiskSummaryAsync(
@@ -58,14 +62,18 @@ public class AiIntegrationService(
         ValidateRequirement(requirement);
         await EnsureManagerOwnsProjectAsync(managerUserId, projectId, cancellationToken);
 
-        var (_, jsonContext) = await contextBuilder.BuildSkillMatchContextAsync(projectId, cancellationToken);
+        var (context, jsonContext) = await contextBuilder.BuildSkillMatchContextAsync(projectId, cancellationToken);
+        var filteredCandidates = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
+
         var prompt = AiPromptBuilder.BuildSkillMatchPrompt(projectId, requirement, jsonContext);
 
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseSkillMatch(responseText, projectId);
 
+        result = skillMatchRanker.RankAndFilterMatches(result, filteredCandidates, requirement);
+
         await LogRequestAsync(AiRequestTypeConstants.SkillMatch, prompt,
-            $"Generated {result.Matches.Count} matches.",
+            $"Generated {result.Matches.Count} matches (filtered and ranked).",
             managerUserId, cancellationToken);
 
         return result;
@@ -82,14 +90,18 @@ public class AiIntegrationService(
 
         ValidateRequirement(requirement);
 
-        var (_, jsonContext) = await contextBuilder.BuildOrganizationalSkillMatchContextAsync(cancellationToken);
-        var prompt = AiPromptBuilder.BuildOrganizationalSkillMatchPrompt(requirement, jsonContext);
+        var (context, jsonContext) = await contextBuilder.BuildOrganizationalSkillMatchContextAsync(cancellationToken);
+        var filteredCandidates = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
 
+        var prompt = AiPromptBuilder.BuildOrganizationalSkillMatchPrompt(requirement, jsonContext);
+        
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseSkillMatch(responseText, projectId: 0);
 
+        result = skillMatchRanker.RankAndFilterMatches(result, filteredCandidates, requirement);
+
         await LogRequestAsync(AiRequestTypeConstants.SkillMatch, prompt,
-            $"Generated {result.Matches.Count} organizational matches.",
+            $"Generated {result.Matches.Count} organizational matches (filtered and ranked).",
             managerUserId, cancellationToken);
 
         return result;
@@ -170,9 +182,10 @@ public class AiIntegrationService(
 
     private async Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken)
     {
-        var configList = await systemConfigRepository.GetAllAsync(cancellationToken);
-        var configDict = configList.ToDictionary(c => c.ConfigKey, c => c.ConfigValue);
-        var activeProvider = configDict.GetValueOrDefault(ConfigKeys.LlmProvider, LlmProviders.Gemini);
+        var providerConfig = await systemConfigRepository.GetByKeyAsync(ConfigKeys.LlmProvider, cancellationToken);
+        var activeProvider = string.IsNullOrWhiteSpace(providerConfig?.ConfigValue)
+            ? LlmProviderKeys.Gemini
+            : providerConfig.ConfigValue.Trim();
 
         var client = llmClientFactory.CreateClient(activeProvider);
         return await client.GenerateCompletionAsync(prompt, cancellationToken);

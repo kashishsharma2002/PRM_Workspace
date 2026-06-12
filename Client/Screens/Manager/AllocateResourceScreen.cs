@@ -8,12 +8,12 @@ namespace Client.Screens.Manager;
 
 public static class AllocateResourceScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
             ConsoleHelper.PrintHeader("Allocate Resource");
-            Console.WriteLine("1. Find resource using AI");
+            Console.WriteLine("1. Find employee/resource using AI");
             Console.WriteLine("2. Allocate directly (I already know who I want)");
             Console.WriteLine("3. End an existing allocation");
             Console.WriteLine("4. Back");
@@ -26,13 +26,13 @@ public static class AllocateResourceScreen
                 switch (choice)
                 {
                     case "1":
-                        await RunAiAllocationFlowAsync(client);
+                        await RunAiAllocationFlowAsync(clients);
                         break;
                     case "2":
-                        await RunDirectAllocationAsync(client);
+                        await RunDirectAllocationAsync(clients);
                         break;
                     case "3":
-                        await RunEndAllocationAsync(client);
+                        await RunEndAllocationAsync(clients);
                         break;
                     case "4":
                         return;
@@ -52,22 +52,33 @@ public static class AllocateResourceScreen
         }
     }
 
-    private static async Task RunDirectAllocationAsync(RestClient client)
+    private static async Task RunDirectAllocationAsync(AppClients clients)
     {
         while (true)
         {
             ConsoleHelper.PrintHeader("Direct Allocation");
-            var projects = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+            var projects = await clients.Manager.GetMyProjectsAsync();
             if (projects is null || projects.Projects.Count == 0)
             {
                 Console.WriteLine("No projects found.");
                 return;
             }
 
-            for (var i = 0; i < projects.Projects.Count; i++)
+            var allocatableProjects = projects.Projects
+                .Where(p => p.ProjectStatus.Equals("PLANNED", StringComparison.OrdinalIgnoreCase) ||
+                            p.ProjectStatus.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (allocatableProjects.Count == 0)
             {
-                var project = projects.Projects[i];
-                Console.WriteLine($"{i + 1,2}.  {project.ProjectName} ({project.Id})");
+                Console.WriteLine("No projects available for allocation. (Only PLANNED and ACTIVE projects can receive allocations.)");
+                return;
+            }
+
+            for (var i = 0; i < allocatableProjects.Count; i++)
+            {
+                var project = allocatableProjects[i];
+                Console.WriteLine($"{i + 1,2}.  {project.ProjectName} ({project.ProjectStatus}) ({project.Id})");
             }
 
             ConsoleHelper.PrintDivider();
@@ -78,45 +89,27 @@ public static class AllocateResourceScreen
 
             if (!int.TryParse(projectInput, out var projectSelection)
                 || projectSelection < 1
-                || projectSelection > projects.Projects.Count)
+                || projectSelection > allocatableProjects.Count)
             {
                 ConsoleHelper.PrintError("Invalid project selection.");
                 continue;
             }
 
-            var selectedProject = projects.Projects[projectSelection - 1];
+            var selectedProject = allocatableProjects[projectSelection - 1];
 
-            var employeeId = await ManagerTeamEmployeePicker.PromptEmployeeIdAsync(client);
+            var employeeId = await ManagerTeamEmployeePicker.PromptEmployeeIdAsync(clients);
             if (employeeId is null)
                 return;
 
-            Console.Write("Utilisation % (1-100): ");
-            if (!decimal.TryParse(Console.ReadLine()?.Trim(), out var percentage) || percentage < 1 || percentage > 100)
-            {
-                ConsoleHelper.PrintError("Allocation percentage must be between 1 and 100.");
-                continue;
-            }
+            var percentage = FormInputHelper.PromptPercentage("Utilisation %");
 
-            Console.Write("From Date (DD-MM-YYYY): ");
-            if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var startIso))
-            {
-                ConsoleHelper.PrintError("Invalid start date.");
-                continue;
-            }
+            var startDate = FormInputHelper.PromptDate("From Date");
+            var endDate = FormInputHelper.PromptDate("To Date");
 
-            Console.Write("To Date (DD-MM-YYYY): ");
-            if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var endIso))
-            {
-                ConsoleHelper.PrintError("Invalid end date.");
-                continue;
-            }
-
-            var startDate = DateOnly.Parse(startIso);
-            var endDate = DateOnly.Parse(endIso);
-            if (endDate <= startDate)
+            while (endDate <= startDate)
             {
                 ConsoleHelper.PrintError("End date must be after start date.");
-                continue;
+                endDate = FormInputHelper.PromptDate("To Date");
             }
 
             ConsoleHelper.PrintDivider();
@@ -132,19 +125,19 @@ public static class AllocateResourceScreen
 
             try
             {
-                var result = await client.PostAsync<CreateAllocationResponse>("/api/allocations", new CreateAllocationRequest
+                var result = await clients.Manager.CreateAllocationAsync(new CreateAllocationRequest
                 {
                     EmployeeId = employeeId.Value,
                     ProjectId = selectedProject.Id,
                     AllocationPercentage = percentage,
                     AllocationStartDate = startDate,
                     AllocationEndDate = endDate
-                }, requireAuth: true);
+                });
 
                 if (result is not null)
                 {
                     ConsoleHelper.PrintSuccess(
-                        $"Allocation saved. Employee {result.EmployeeId} → Project {result.ProjectId} " +
+                        $"Allocation saved. Employee/Resource {result.EmployeeId} → Project {result.ProjectId} " +
                         $"({result.AllocationPercentage:0.#}%, {DateInputHelper.FormatDisplay(startDate)}–{DateInputHelper.FormatDisplay(endDate)})");
                     return;
                 }
@@ -162,10 +155,10 @@ public static class AllocateResourceScreen
         }
     }
 
-    private static async Task RunEndAllocationAsync(RestClient client)
+    private static async Task RunEndAllocationAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("End Allocation");
-        var projects = await client.GetAsync<ManagerProjectListResponse>("/api/projects/my", requireAuth: true);
+        var projects = await clients.Manager.GetMyProjectsAsync();
         if (projects is null || projects.Projects.Count == 0)
         {
             Console.WriteLine("No projects found.");
@@ -189,9 +182,7 @@ public static class AllocateResourceScreen
         }
 
         var selectedProject = projects.Projects[projectSelection - 1];
-        var detail = await client.GetAsync<ManagerProjectDetail>(
-            $"/api/projects/{selectedProject.Id}/manager",
-            requireAuth: true);
+        var detail = await clients.Manager.GetProjectDetailAsync(selectedProject.Id);
 
         if (detail is null || detail.AllocatedResources.Count == 0)
         {
@@ -201,19 +192,19 @@ public static class AllocateResourceScreen
 
         Console.WriteLine();
         Console.WriteLine("Active Allocations on this project:");
-        Console.WriteLine($"  {"#",-4}{"Employee",-16}{"%",-6}{"From",-14}To");
+        Console.WriteLine($"  {"#",-4}{"Employee/Resource",-24}{"%",-6}{"From",-14}To");
         for (var i = 0; i < detail.AllocatedResources.Count; i++)
         {
             var resource = detail.AllocatedResources[i];
             Console.WriteLine(
-                $"  {i + 1,2}.  {resource.EmployeeName,-14}" +
+                $"  {i + 1,2}.  {resource.EmployeeName,-24}" +
                 $"{resource.AllocationPercentage,4:0.#}%  " +
                 $"{DateInputHelper.FormatDisplay(resource.AllocationStartDate),-14}" +
                 $"{DateInputHelper.FormatDisplay(resource.AllocationEndDate)}");
         }
 
         ConsoleHelper.PrintDivider();
-        Console.Write("Select allocation to end: ");
+        Console.Write("Select allocation/resource to end: ");
         if (!int.TryParse(Console.ReadLine()?.Trim(), out var allocationSelection)
             || allocationSelection < 1
             || allocationSelection > detail.AllocatedResources.Count)
@@ -224,29 +215,26 @@ public static class AllocateResourceScreen
 
         var selected = detail.AllocatedResources[allocationSelection - 1];
         Console.WriteLine();
-        Console.Write($"End {selected.EmployeeName}'s allocation on {detail.ProjectName}? [Y/N]: ");
+        Console.Write($"End {selected.EmployeeName}'s allocation/resource on {detail.ProjectName}? [Y/N]: ");
         var confirm = Console.ReadLine()?.Trim().ToUpperInvariant();
         if (confirm != "Y")
             return;
 
-        var result = await client.PutAsync<EndAllocationResponse>(
-            $"/api/allocations/{selected.AllocationId}/end",
-            new { },
-            requireAuth: true);
+        var result = await clients.Manager.EndAllocationAsync(selected.AllocationId);
 
         if (result is not null)
         {
             ConsoleHelper.PrintSuccess(
-                $"Allocation ended. {selected.EmployeeName} freed from {detail.ProjectName} as of " +
+                $"Allocation ended. {selected.EmployeeName} (Employee/Resource) freed from {detail.ProjectName} as of " +
                 $"{DateInputHelper.FormatDisplay(result.AllocationEndDate)}.");
         }
     }
 
-    private static async Task RunAiAllocationFlowAsync(RestClient client)
+    private static async Task RunAiAllocationFlowAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Allocate Resource");
 
-        var selectedProject = await ManagerProjectPicker.PromptByNameOrIdAsync(client);
+        var selectedProject = await ManagerProjectPicker.PromptByNameOrIdAsync(clients);
         if (selectedProject is null)
             return;
 
@@ -262,8 +250,7 @@ public static class AllocateResourceScreen
         }
 
         Console.WriteLine("\nSearching... (AI matching in progress)");
-        var url = $"/api/ai/projects/{selectedProject.Id}/skill-match?requirement={Uri.EscapeDataString(requirement)}";
-        var response = await client.GetAsync<AiSkillMatchResponse>(url, requireAuth: true);
+        var response = await clients.Ai.GetProjectSkillMatchAsync(selectedProject.Id, requirement);
         if (response is null || response.Matches.Count == 0)
         {
             ConsoleHelper.PrintError("No AI matches found or server error occurred.");
@@ -277,7 +264,7 @@ public static class AllocateResourceScreen
         for (var i = 0; i < response.Matches.Count; i++)
         {
             var match = response.Matches[i];
-            Console.WriteLine($"{i + 1}.  {match.EmployeeName,-20} (Score: {match.MatchScore}%)");
+            Console.WriteLine($"{i + 1}.  {match.EmployeeName,-24} (Score: {match.MatchScore}%)");
             Console.WriteLine($"    Matched Skill: {match.SkillName}");
             if (!string.IsNullOrWhiteSpace(match.Reason))
             {
@@ -287,7 +274,7 @@ public static class AllocateResourceScreen
         }
 
         ConsoleHelper.PrintDivider();
-        ConsoleHelper.PrintSuccess("AI-matched resources retrieved. Actual resource allocation is held per pending requirements.");
+        ConsoleHelper.PrintSuccess("AI-matched employees/resources retrieved. Go to Allocate Resources to allocate them to the project.");
         Console.WriteLine("\nPress any key to go back...");
         Console.ReadKey(intercept: true);
     }

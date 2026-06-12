@@ -3,11 +3,12 @@ using Server.Common.Ai;
 using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Ai;
-using Server.Services.Ai.Models;
+using Server.Models.DTOs.Ai.Context;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class TeamBuilderResponseNormalizer
+public class TeamBuilderResponseNormalizer : ITeamBuilderResponseNormalizer
 {
     public TeamBuilderResponseDto Normalize(
         TeamBuilderResponseDto response,

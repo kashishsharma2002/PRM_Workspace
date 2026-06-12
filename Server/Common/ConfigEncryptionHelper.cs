@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace Server.Common;
 
-public class ConfigEncryptionHelper(IDataProtectionProvider dataProtectionProvider)
+public class ConfigEncryptionHelper(IDataProtectionProvider dataProtectionProvider) : IConfigEncryptionHelper
 {
     private const string ProtectorPurpose = "PRM.SystemConfig.LlmApiKey";
     public const string EncryptedPrefix = "enc:";

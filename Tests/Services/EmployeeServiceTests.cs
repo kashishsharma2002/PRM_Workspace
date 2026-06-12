@@ -1,181 +1,159 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
 using Server.Common.Allocations;
 using Server.Common.Audit;
+using Server.Common.Roles;
 using Server.Data;
-using Tests.Helpers;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
-using Server.Models.DTOs.Users;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Services.Shared;
+using Server.Services.Employees;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class EmployeeServiceTests : IDisposable
+public class EmployeeServiceTests
 {
-    private readonly PrmDbContext _context;
-    private readonly UserService _userService;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<ISkillRepository> _skillRepoMock;
+    private readonly Mock<IEmployeeSkillRepository> _employeeSkillRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<EmployeeService>> _loggerMock;
     private readonly EmployeeService _employeeService;
 
     public EmployeeServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
 
-        _context = new PrmDbContext(options);
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
 
-        var userRepo = new UserRepository(_context);
-        var employeeRepo = new EmployeeRepository(_context);
-        var skillRepo = new SkillRepository(_context);
-        var employeeSkillRepo = new EmployeeSkillRepository(_context);
-        var allocationRepo = new AllocationRepository(_context);
-        var projectRepo = new ProjectRepository(_context);
-        var auditService = TestServiceFactory.CreateAuditService(_context);
-        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
-
-        _userService = new UserService(
-            _context,
-            userRepo,
-            employeeRepo,
-            roleRepo,
-            auditService,
-            TestServiceFactory.CreateLogger<UserService>());
-        var timesheetRepo = new TimesheetRepository(_context);
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _skillRepoMock = new Mock<ISkillRepository>();
+        _employeeSkillRepoMock = new Mock<IEmployeeSkillRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _timesheetRepoMock = new Mock<ITimesheetRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<EmployeeService>>();
 
         _employeeService = new EmployeeService(
-            _context,
-            employeeRepo,
-            userRepo,
-            roleRepo,
-            skillRepo,
-            employeeSkillRepo,
-            allocationRepo,
-            projectRepo,
-            timesheetRepo,
-            auditService,
-            TestServiceFactory.CreateLogger<EmployeeService>());
-    }
-
-    private async Task<(long EmployeeId, long UserId)> CreateEmployeeAsync(string username = "emp.user")
-    {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
-        {
-            FullName = "Test Employee",
-            Email = $"{username}@techserve.com",
-            Username = username,
-            TemporaryPassword = "Welcome1",
-            Role = "EMPLOYEE",
-            Department = DepartmentConstants.SoftwareDevelopment,
-            Designation = DesignationConstants.SoftwareEngineer
-        });
-
-        var profile = await _context.ResourceProfiles.FirstAsync(e => e.UserId == result.UserId);
-        return (profile.Id, result.UserId);
-    }
-
-    private async Task<long> CreateManagerAsync(string username = "mgr.user")
-    {
-        var result = await _userService.CreateUserAccountAsync(1, new CreateUserRequestDto
-        {
-            FullName = "Test Manager",
-            Email = $"{username}@techserve.com",
-            Username = username,
-            TemporaryPassword = "Welcome1",
-            Role = "MANAGER",
-            Department = DepartmentConstants.Management,
-            Designation = DesignationConstants.DeliveryManager
-        });
-
-        var now = DateTime.UtcNow;
-        _context.ResourceProfiles.Add(new ResourceProfile
-        {
-            UserId = result.UserId,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
-
-        return result.UserId;
+            _transactionManagerMock.Object,
+            _employeeRepoMock.Object,
+            _userRepoMock.Object,
+            _roleRepoMock.Object,
+            _skillRepoMock.Object,
+            _employeeSkillRepoMock.Object,
+            _allocationRepoMock.Object,
+            _projectRepoMock.Object,
+            _timesheetRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task UpdateEmployeeAsync_UpdatesDepartmentAndDesignation()
     {
-        var (employeeId, userId) = await CreateEmployeeAsync();
+        // Arrange
+        var profile = new ResourceProfile { Id = 1, UserId = 10 };
+        var user = new User { Id = 10, Department = "HR", Designation = "MGR" };
 
-        await _employeeService.UpdateEmployeeAsync(employeeId, new UpdateEmployeeRequestDto
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        // Act
+        await _employeeService.UpdateEmployeeAsync(1, new UpdateEmployeeRequestDto
         {
             Department = "Backend",
             Designation = "Developer"
         });
 
-        var user = await _context.Users.FindAsync(userId);
-        Assert.NotNull(user);
-        Assert.Equal("BACKEND", user!.Department);
+        // Assert
+        Assert.Equal("BACKEND", user.Department);
         Assert.Equal("DEVELOPER", user.Designation);
+        _userRepoMock.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task DeactivateEmployeeAsync_EndsAllocationsAndBlocksLogin()
     {
-        var (employeeId, userId) = await CreateEmployeeAsync("deact.emp");
-        var managerUserId = await CreateManagerAsync();
-        var managerProfile = await _context.ResourceProfiles.FirstAsync(p => p.UserId == managerUserId);
-
-        var now = DateTime.UtcNow;
-        var project = new Project
+        // Arrange
+        var profile = new ResourceProfile { Id = 1, UserId = 10, ResourceStatus = "ALLOCATED" };
+        var user = new User { Id = 10, IsActive = true };
+        var allocations = new List<ProjectAllocation>
         {
-            ProjectCode = "PRJ-001",
-            ProjectName = "Alpha Portal",
-            StartDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-1)),
-            EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(6)),
-            ProjectStatus = "ACTIVE",
-            ManagerUserId = managerUserId,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
+            new() { Id = 100, ResourceProfileId = 1, AllocationPercentage = 50, AllocationStatus = "ACTIVE" }
         };
-        _context.Projects.Add(project);
-        await _context.SaveChangesAsync();
 
-        _context.ProjectAllocations.Add(new ProjectAllocation
-        {
-            ResourceProfileId = employeeId,
-            ProjectId = project.Id,
-            AllocationPercentage = 50,
-            AllocationStartDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7)),
-            AllocationEndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(3)),
-            AllocationStatus = "ACTIVE",
-            AllocatedByUserId = managerUserId,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocations);
 
-        await _employeeService.DeactivateEmployeeAsync(999, employeeId);
+        // Act
+        await _employeeService.DeactivateEmployeeAsync(999, 1);
 
-        var profile = await _context.ResourceProfiles.FindAsync(employeeId);
-        var user = await _context.Users.FindAsync(userId);
-        var allocation = await _context.ProjectAllocations.FirstAsync();
-        var audit = await _context.AuditLogs.FirstAsync(a => a.EntityName == AuditEntityConstants.Employees);
+        // Assert
+        Assert.Equal(ResourceStatusConstants.Bench, profile.ResourceStatus);
+        Assert.False(user.IsActive);
+        Assert.Equal(AllocationStatusConstants.Ended, allocations[0].AllocationStatus);
 
-        Assert.NotNull(profile);
-        Assert.Equal(ResourceStatusConstants.Bench, profile!.ResourceStatus);
-        Assert.NotNull(user);
-        Assert.False(user!.IsActive);
-        Assert.Equal(AllocationStatusConstants.Ended, allocation.AllocationStatus);
-        Assert.Equal(AuditActionConstants.Deactivate, audit.ActionType);
+        _allocationRepoMock.Verify(r => r.UpdateAsync(allocations[0], It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _userRepoMock.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _auditServiceMock.Verify(a => a.LogDeactivateAsync(
+            999,
+            AuditEntityConstants.Employees,
+            1,
+            It.IsAny<object>(),
+            It.IsAny<object>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task AddSkillAsync_DuplicateSkill_ThrowsConflict()
     {
-        var (employeeId, _) = await CreateEmployeeAsync("skill.emp");
+        // Arrange
+        var profile = new ResourceProfile { Id = 1, UserId = 10 };
+        var skill = new Skill { Id = 5, SkillName = "Java" };
+
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _skillRepoMock.Setup(r => r.GetByNameAsync("Java", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(skill);
+        _employeeSkillRepoMock.Setup(r => r.ExistsAsync(10, 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var request = new AddSkillRequestDto
         {
@@ -184,42 +162,54 @@ public class EmployeeServiceTests : IDisposable
             ProficiencyLevel = "INTERMEDIATE"
         };
 
-        await _employeeService.AddSkillAsync(employeeId, request);
-
+        // Act & Assert
         await Assert.ThrowsAsync<ConflictAppException>(() =>
-            _employeeService.AddSkillAsync(employeeId, request));
+            _employeeService.AddSkillAsync(1, request));
     }
 
     [Fact]
     public async Task AssignManagerAsync_InvalidManager_ThrowsValidation()
     {
-        var (employeeId, userId) = await CreateEmployeeAsync("assign.emp");
+        // Arrange
+        var profile = new ResourceProfile { Id = 1, UserId = 10 };
+        var invalidManager = new User { Id = 10, IsActive = true }; // same user id or not manager role
 
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(invalidManager);
+
+        // Act & Assert
         await Assert.ThrowsAsync<ValidationAppException>(() =>
-            _employeeService.AssignManagerAsync(employeeId, new AssignManagerRequestDto
+            _employeeService.AssignManagerAsync(1, new AssignManagerRequestDto
             {
-                ManagerUserId = userId
+                ManagerUserId = 10
             }));
     }
 
     [Fact]
     public async Task AssignManagerAsync_ValidManager_SetsManagerId()
     {
-        var (employeeId, _) = await CreateEmployeeAsync("assign2.emp");
-        var managerUserId = await CreateManagerAsync("assign.mgr");
+        // Arrange
+        var profile = new ResourceProfile { Id = 1, UserId = 10, ManagerId = null };
+        var manager = new User { Id = 20, IsActive = true };
 
-        await _employeeService.AssignManagerAsync(employeeId, new AssignManagerRequestDto
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(manager);
+        _roleRepoMock.Setup(r => r.UserHasRoleAsync(20, RoleConstants.Manager, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        await _employeeService.AssignManagerAsync(1, new AssignManagerRequestDto
         {
-            ManagerUserId = managerUserId
+            ManagerUserId = 20
         });
 
-        var profile = await _context.ResourceProfiles.FindAsync(employeeId);
-        Assert.NotNull(profile);
-        Assert.Equal(managerUserId, profile!.ManagerId);
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
+        // Assert
+        Assert.Equal(20, profile.ManagerId);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

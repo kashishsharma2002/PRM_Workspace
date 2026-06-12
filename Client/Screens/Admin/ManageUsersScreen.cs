@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class ManageUsersScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
@@ -22,16 +22,16 @@ public static class ManageUsersScreen
             switch (choice)
             {
                 case "1":
-                    await CreateUserAccountScreen.RunAsync(client);
+                    await CreateUserAccountScreen.RunAsync(clients);
                     break;
                 case "2":
-                    await ViewAllUsersScreen.RunAsync(client);
+                    await ViewAllUsersScreen.RunAsync(clients);
                     break;
                 case "3":
-                    await ResetPasswordScreen.RunAsync(client);
+                    await ResetPasswordScreen.RunAsync(clients);
                     break;
                 case "4":
-                    await DeactivateUserScreen.RunAsync(client);
+                    await DeactivateUserScreen.RunAsync(clients);
                     break;
                 case "5":
                 case "0":

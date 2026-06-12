@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class ManageProjectsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
@@ -24,16 +24,16 @@ public static class ManageProjectsScreen
                 switch (choice)
                 {
                     case "1":
-                        await CreateProjectScreen.RunAsync(client);
+                        await CreateProjectScreen.RunAsync(clients);
                         break;
                     case "2":
-                        await ViewAllProjectsScreen.RunAsync(client);
+                        await ViewAllProjectsScreen.RunAsync(clients);
                         break;
                     case "3":
-                        await UpdateProjectScreen.RunAsync(client);
+                        await UpdateProjectScreen.RunAsync(clients);
                         break;
                     case "4":
-                        await ManageMilestonesScreen.RunAsync(client);
+                        await ManageMilestonesScreen.RunAsync(clients);
                         break;
                     case "5":
                     case "0":

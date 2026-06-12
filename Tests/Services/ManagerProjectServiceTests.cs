@@ -1,163 +1,128 @@
-using Microsoft.EntityFrameworkCore;
-using Tests.Helpers;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common.Roles;
-using Server.Data;
 using Server.Exceptions;
+using Server.Models.DTOs.Projects;
 using Server.Models.Entities;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Repositories.SystemConfig;
+using Server.Services.Shared;
+using Server.Services.Projects;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class ManagerProjectServiceTests : IDisposable
+public class ManagerProjectServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<IMilestoneRepository> _milestoneRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<ProjectService>> _loggerMock;
     private readonly ProjectService _projectService;
-    private readonly long _ankitUserId;
-    private readonly long _nehaUserId;
-    private readonly long _ankitProjectId;
-    private readonly long _nehaProjectId;
+
+    private readonly long _managerAUserId = 1;
+    private readonly long _managerBUserId = 2;
+    private readonly long _managerAProjectId = 10;
 
     public ManagerProjectServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-
-        _context = new PrmDbContext(options);
-        (_ankitUserId, _nehaUserId, _ankitProjectId, _nehaProjectId) = SeedData();
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _milestoneRepoMock = new Mock<IMilestoneRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _timesheetRepoMock = new Mock<ITimesheetRepository>();
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<ProjectService>>();
 
         _projectService = new ProjectService(
-            new ProjectRepository(_context),
-            new MilestoneRepository(_context),
-            new UserRepository(_context),
-            TestServiceFactory.CreateRoleRepository(_context),
-            new AllocationRepository(_context),
-            new EmployeeRepository(_context),
-            new TimesheetRepository(_context),
-            new SystemConfigRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            TestServiceFactory.CreateLogger<ProjectService>());
-    }
-
-    private (long ankitId, long nehaId, long ankitProjectId, long nehaProjectId) SeedData()
-    {
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
-        var now = DateTime.UtcNow;
-        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
-
-        var ankit = new User
-        {
-            Username = "ankit.shah",
-            Email = "ankit@techserve.com",
-            FullName = "Ankit Shah",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        var neha = new User
-        {
-            Username = "neha.joshi",
-            Email = "neha@techserve.com",
-            FullName = "Neha Joshi",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.AddRange(ankit, neha);
-        _context.SaveChanges();
-
-        _context.UserRoles.AddRange(
-            new UserRole { UserId = ankit.Id, RoleId = managerRole.Id, AssignedAt = now },
-            new UserRole { UserId = neha.Id, RoleId = managerRole.Id, AssignedAt = now });
-
-        var alpha = new Project
-        {
-            ProjectCode = "PRJ-000001",
-            ProjectName = "Alpha Portal",
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2026, 6, 30),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = ankit.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        var beta = new Project
-        {
-            ProjectCode = "PRJ-000002",
-            ProjectName = "Beta CRM",
-            StartDate = new DateOnly(2026, 2, 1),
-            EndDate = new DateOnly(2026, 8, 15),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = ankit.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        var gamma = new Project
-        {
-            ProjectCode = "PRJ-000003",
-            ProjectName = "Gamma Rewrite",
-            StartDate = new DateOnly(2026, 2, 1),
-            EndDate = new DateOnly(2026, 7, 1),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = neha.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Projects.AddRange(alpha, beta, gamma);
-        _context.SaveChanges();
-
-        _context.ProjectMilestones.Add(new ProjectMilestone
-        {
-            ProjectId = alpha.Id,
-            MilestoneTitle = "Backend API",
-            DueDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-5)),
-            MilestoneStatus = "IN_PROGRESS",
-            SortOrder = 1,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        _context.SaveChanges();
-
-        return (ankit.Id, neha.Id, alpha.Id, gamma.Id);
+            _projectRepoMock.Object,
+            _milestoneRepoMock.Object,
+            _userRepoMock.Object,
+            _roleRepoMock.Object,
+            _allocationRepoMock.Object,
+            _employeeRepoMock.Object,
+            _timesheetRepoMock.Object,
+            _systemConfigRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
     public async Task GetMyProjectsAsync_ReturnsOnlyOwnedProjects()
     {
-        var result = await _projectService.GetMyProjectsAsync(_ankitUserId);
+        // Arrange
+        var projects = new List<Project>
+        {
+            new() { Id = _managerAProjectId, ProjectName = "Project A", ManagerUserId = _managerAUserId, HealthStatus = "GREEN" },
+            new() { Id = 11, ProjectName = "Project B", ManagerUserId = _managerAUserId, HealthStatus = "GREEN" }
+        };
 
+        _projectRepoMock.Setup(r => r.GetByManagerUserIdAsync(_managerAUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(projects);
+
+        // Act
+        var result = await _projectService.GetMyProjectsAsync(_managerAUserId);
+
+        // Assert
         Assert.Equal(2, result.Projects.Count);
-        Assert.All(result.Projects, p => Assert.Contains(p.ProjectName, new[] { "Alpha Portal", "Beta CRM" }));
-        Assert.DoesNotContain(result.Projects, p => p.ProjectName == "Gamma Rewrite");
+        Assert.All(result.Projects, p => Assert.Contains(p.ProjectName, new[] { "Project A", "Project B" }));
     }
 
     [Fact]
     public async Task GetManagerProjectDetailAsync_OtherManagerProject_ThrowsNotFound()
     {
+        // Arrange
+        var project = new Project { Id = _managerAProjectId, ManagerUserId = _managerAUserId };
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_managerAProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+
+        // Act & Assert
         await Assert.ThrowsAsync<NotFoundAppException>(
-            () => _projectService.GetManagerProjectDetailAsync(_nehaUserId, _ankitProjectId));
+            () => _projectService.GetManagerProjectDetailAsync(_managerBUserId, _managerAProjectId));
     }
 
     [Fact]
     public async Task GetManagerProjectDetailAsync_OverdueMilestone_SetsRiskFlag()
     {
-        var detail = await _projectService.GetManagerProjectDetailAsync(_ankitUserId, _ankitProjectId);
+        // Arrange
+        var project = new Project { Id = _managerAProjectId, ManagerUserId = _managerAUserId, ProjectCode = "PRJ-123", ProjectName = "Project A", HealthStatus = "GREEN", EndDate = new DateOnly(2026, 12, 31) };
+        var milestones = new List<ProjectMilestone>
+        {
+            new() { ProjectId = _managerAProjectId, MilestoneTitle = "Backend API", DueDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-5)), MilestoneStatus = "IN_PROGRESS" }
+        };
 
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_managerAProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _milestoneRepoMock.Setup(r => r.GetByProjectIdAsync(_managerAProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(milestones);
+        _allocationRepoMock.Setup(r => r.GetActiveByProjectIdAsync(_managerAProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectAllocation>());
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = "40" });
+
+        // Act
+        var detail = await _projectService.GetManagerProjectDetailAsync(_managerAUserId, _managerAProjectId);
+
+        // Assert
         Assert.Contains("OVERDUE_MILESTONE", detail.RiskFlags);
         Assert.Contains(detail.Milestones, m => m.IsOverdue);
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
     }
 }

@@ -1,176 +1,139 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
-using Server.Common.Roles;
+using Server.Common.Audit;
 using Server.Data;
 using Server.Exceptions;
+using Server.Models.DTOs.Timesheets;
 using Server.Models.Entities;
-using Tests.Helpers;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Repositories.SystemConfig;
+using Server.Services.Shared;
+using Server.Services.Timesheets;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class TimesheetServiceTests : IDisposable
+public class TimesheetServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IDbTransactionManager> _transactionManagerMock;
+    private readonly Mock<IDbTransaction> _transactionMock;
+    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IActivityTagRepository> _activityTagRepoMock;
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly IMemoryCache _memoryCache;
+    private readonly Mock<ILogger<TimesheetService>> _loggerMock;
     private readonly TimesheetService _timesheetService;
-    private readonly long _employeeId;
-    private readonly long _userId;
-    private readonly long _projectId;
+
+    private readonly long _employeeId = 10;
+    private readonly long _userId = 101;
+    private readonly long _projectId = 200;
     private readonly DateOnly _weekStart = new(2026, 5, 12);
 
     public TimesheetServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _transactionMock = new Mock<IDbTransaction>();
+        _transactionManagerMock = new Mock<IDbTransactionManager>();
 
-        _context = new PrmDbContext(options);
-        (_employeeId, _userId, _projectId) = SeedData();
+        _transactionManagerMock.Setup(c => c.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_transactionMock.Object);
+
+        _timesheetRepoMock = new Mock<ITimesheetRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _activityTagRepoMock = new Mock<IActivityTagRepository>();
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _memoryCache = new MemoryCache(new MemoryCacheOptions());
+        _loggerMock = new Mock<ILogger<TimesheetService>>();
 
         _timesheetService = new TimesheetService(
-            _context,
-            new TimesheetRepository(_context),
-            new AllocationRepository(_context),
-            new ProjectRepository(_context),
-            new EmployeeRepository(_context),
-            new UserRepository(_context),
-            new ActivityTagRepository(_context),
-            new SystemConfigRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            new MemoryCache(new MemoryCacheOptions()),
-            TestServiceFactory.CreateLogger<TimesheetService>());
+            _transactionManagerMock.Object,
+            _timesheetRepoMock.Object,
+            _allocationRepoMock.Object,
+            _projectRepoMock.Object,
+            _employeeRepoMock.Object,
+            _userRepoMock.Object,
+            _activityTagRepoMock.Object,
+            _systemConfigRepoMock.Object,
+            _auditServiceMock.Object,
+            _memoryCache,
+            _loggerMock.Object);
     }
 
-    private (long employeeId, long userId, long projectId) SeedData()
+    private void SetupDefaultConfigAndAllocation(decimal allocationPercentage = 50, string maxWeeklyHours = "40")
     {
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
-        var now = DateTime.UtcNow;
-        var managerRole = _context.Roles.First(r => r.RoleName == RoleConstants.Manager);
-        var employeeRole = _context.Roles.First(r => r.RoleName == RoleConstants.Employee);
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = maxWeeklyHours });
 
-        var user = new User
+        var allocations = new List<ProjectAllocation>
         {
-            Username = "ravi.kumar",
-            Email = "ravi@techserve.com",
-            FullName = "Ravi Kumar",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
+            new() { Id = 1, ResourceProfileId = _employeeId, ProjectId = _projectId, AllocationPercentage = allocationPercentage, AllocationStatus = "ACTIVE" }
         };
-        _context.Users.Add(user);
-
-        var manager = new User
-        {
-            Username = "ankit.shah",
-            Email = "ankit@techserve.com",
-            FullName = "Ankit Shah",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(manager);
-        _context.SaveChanges();
-
-        _context.UserRoles.AddRange(
-            new UserRole { UserId = user.Id, RoleId = employeeRole.Id, AssignedAt = now },
-            new UserRole { UserId = manager.Id, RoleId = managerRole.Id, AssignedAt = now });
-
-        var managerProfile = new ResourceProfile
-        {
-            UserId = manager.Id,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        var employee = new ResourceProfile
-        {
-            UserId = user.Id,
-            ResourceStatus = ResourceStatusConstants.Allocated,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.AddRange(managerProfile, employee);
-        _context.SaveChanges();
-
-        var project = new Project
-        {
-            ProjectCode = "PRJ-000201",
-            ProjectName = "Alpha Portal",
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2026, 6, 30),
-            ProjectStatus = "ACTIVE",
-            ManagerUserId = manager.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Projects.Add(project);
-
-        _context.ProjectAllocations.Add(new ProjectAllocation
-        {
-            ResourceProfileId = employee.Id,
-            ProjectId = project.Id,
-            AllocationPercentage = 50,
-            AllocationStartDate = new DateOnly(2026, 3, 1),
-            AllocationEndDate = new DateOnly(2026, 6, 30),
-            AllocationStatus = "ACTIVE",
-            AllocatedByUserId = manager.Id,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-
-        _context.ActivityTags.Add(new ActivityTag
-        {
-            TagCode = "BACKEND_API",
-            TagName = "Backend API Development",
-            TagCategory = "Backend",
-            IsActive = true,
-            CreatedAt = now
-        });
-
-        _context.SystemConfigurations.Add(new SystemConfiguration
-        {
-            ConfigKey = ConfigKeys.MaxWeeklyHours,
-            ConfigValue = "40",
-            UpdatedAt = now
-        });
-
-        _context.SaveChanges();
-        return (employee.Id, user.Id, project.Id);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdForWeekAsync(_employeeId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocations);
     }
 
     [Fact]
     public async Task SubmitTimesheetAsync_ValidRequest_CreatesTimesheet()
     {
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(_projectId)
-            .WithHoursPerProject(18)
-            .WithActivityTagIds(1)
-            .BuildSubmitRequest();
+        // Arrange
+        SetupDefaultConfigAndAllocation(50, "40");
+        var lineItems = new List<TimesheetLineItemRequestDto>
+        {
+            new() { ProjectId = _projectId, HoursLogged = 18, ActivityTagIds = [1], CustomTagText = "" }
+        };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems, Remarks = "Test" };
 
+        _timesheetRepoMock.Setup(r => r.HasSubmittedForWeekAsync(_employeeId, _weekStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _activityTagRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ActivityTag> { new() { Id = 1, TagCode = "DEV", TagName = "Dev" } });
+        _timesheetRepoMock.Setup(r => r.AddAsync(It.IsAny<Timesheet>(), It.IsAny<CancellationToken>()))
+            .Callback<Timesheet, CancellationToken>((t, c) => t.Id = 55);
+
+        // Act
         var result = await _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request);
 
-        Assert.True(result.TimesheetId > 0);
+        // Assert
+        Assert.Equal(55, result.TimesheetId);
         Assert.Equal("SUBMITTED", result.Status);
         Assert.Equal(18, result.TotalHours);
+        _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task SubmitTimesheetAsync_DuplicateWeek_ThrowsConflict()
     {
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(_projectId)
-            .WithHoursPerProject(10)
-            .BuildSubmitRequest();
+        // Arrange
+        SetupDefaultConfigAndAllocation();
+        var lineItems = new List<TimesheetLineItemRequestDto> { new() { ProjectId = _projectId, HoursLogged = 10 } };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
-        await _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request);
+        _timesheetRepoMock.Setup(r => r.HasSubmittedForWeekAsync(_employeeId, _weekStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
+        // Act & Assert
         await Assert.ThrowsAsync<ConflictAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
     }
@@ -178,12 +141,12 @@ public class TimesheetServiceTests : IDisposable
     [Fact]
     public async Task SubmitTimesheetAsync_FutureWeek_ThrowsValidation()
     {
+        // Arrange
         var futureMonday = WeekDateHelper.GetCurrentWeekMonday().AddDays(7);
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(futureMonday)
-            .WithProjectId(_projectId)
-            .BuildSubmitRequest();
+        var lineItems = new List<TimesheetLineItemRequestDto> { new() { ProjectId = _projectId, HoursLogged = 10 } };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = futureMonday, LineItems = lineItems };
 
+        // Act & Assert
         await Assert.ThrowsAsync<ValidationAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
     }
@@ -191,12 +154,18 @@ public class TimesheetServiceTests : IDisposable
     [Fact]
     public async Task SubmitTimesheetAsync_HoursExceedAllocation_ThrowsValidation()
     {
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(_projectId)
-            .WithHoursPerProject(25)
-            .BuildSubmitRequest();
+        // Arrange
+        SetupDefaultConfigAndAllocation(50, "40"); // Max hours per project allocation (50% of 40) is 20
+        var lineItems = new List<TimesheetLineItemRequestDto>
+        {
+            new() { ProjectId = _projectId, HoursLogged = 25 } // 25 exceeds 20
+        };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = _projectId, ProjectName = "Project A" });
+
+        // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
 
@@ -206,16 +175,15 @@ public class TimesheetServiceTests : IDisposable
     [Fact]
     public async Task SubmitTimesheetAsync_TotalHoursExceedMaxWeekly_ThrowsValidation()
     {
-        var allocation = await _context.ProjectAllocations.FirstAsync();
-        allocation.AllocationPercentage = 100;
-        await _context.SaveChangesAsync();
+        // Arrange
+        SetupDefaultConfigAndAllocation(100, "40"); // 100% allocation, but request is 41 hours
+        var lineItems = new List<TimesheetLineItemRequestDto>
+        {
+            new() { ProjectId = _projectId, HoursLogged = 41 }
+        };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(_projectId)
-            .WithHoursPerProject(41)
-            .BuildSubmitRequest();
-
+        // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
 
@@ -225,12 +193,18 @@ public class TimesheetServiceTests : IDisposable
     [Fact]
     public async Task SubmitTimesheetAsync_UnallocatedProject_ThrowsValidation()
     {
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(9999)
-            .WithHoursPerProject(10)
-            .BuildSubmitRequest();
+        // Arrange
+        SetupDefaultConfigAndAllocation(50, "40");
+        var lineItems = new List<TimesheetLineItemRequestDto>
+        {
+            new() { ProjectId = 9999, HoursLogged = 10 } // Unallocated project ID
+        };
+        var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
+        _projectRepoMock.Setup(r => r.GetByIdAsync(9999, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = 9999, ProjectName = "Project X" });
+
+        // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
 
@@ -240,23 +214,20 @@ public class TimesheetServiceTests : IDisposable
     [Fact]
     public async Task GetMyTimesheetsAsync_ReturnsSubmittedHistory()
     {
-        var request = new TimesheetTestDataBuilder()
-            .WithWeekStartDate(_weekStart)
-            .WithProjectId(_projectId)
-            .WithHoursPerProject(15)
-            .BuildSubmitRequest();
+        // Arrange
+        var timesheets = new List<Timesheet>
+        {
+            new() { Id = 1, ResourceProfileId = _employeeId, WeekStartDate = _weekStart, TotalHours = 15, Status = "SUBMITTED" }
+        };
+        _timesheetRepoMock.Setup(r => r.GetByEmployeeAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(timesheets);
 
-        await _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request);
-
+        // Act
         var history = await _timesheetService.GetMyTimesheetsAsync(_employeeId);
 
+        // Assert
         Assert.Single(history);
         Assert.Equal(_weekStart, history[0].WeekStartDate);
         Assert.Equal("SUBMITTED", history[0].Status);
-    }
-
-    public void Dispose()
-    {
-        _context.Dispose();
     }
 }

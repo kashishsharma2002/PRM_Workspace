@@ -1,5 +1,6 @@
 using Server.Common;
 using Server.Models.DTOs.Users;
+using Tests.Helpers;
 
 namespace Tests;
 
@@ -12,9 +13,9 @@ public class CreateUserRequestValidatorTests
     {
         var result = _validator.Validate(new CreateUserRequestDto
         {
-            FullName = "Priya Sharma",
-            Email = "priya.sharma@techserve.com",
-            Username = "priya.sharma",
+            FullName = MockData.Names.EmployeeA,
+            Email = MockData.Email("employee.a"),
+            Username = MockData.Username("employee.a"),
             TemporaryPassword = "Welcome1",
             Role = "EMPLOYEE",
             Department = DepartmentConstants.SoftwareDevelopment,
@@ -33,7 +34,7 @@ public class CreateUserRequestValidatorTests
         var result = _validator.Validate(new CreateUserRequestDto
         {
             FullName = "Test User",
-            Email = "test@techserve.com",
+            Email = MockData.Email("test.user"),
             Username = "test.user",
             TemporaryPassword = password,
             Role = "EMPLOYEE"
@@ -48,7 +49,7 @@ public class CreateUserRequestValidatorTests
         var result = _validator.Validate(new CreateUserRequestDto
         {
             FullName = "Test User",
-            Email = "test@techserve.com",
+            Email = MockData.Email("test.user"),
             Username = "test.user",
             TemporaryPassword = "Welcome1",
             Role = "DIRECTOR"

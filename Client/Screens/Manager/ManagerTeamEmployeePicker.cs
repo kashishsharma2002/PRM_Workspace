@@ -8,11 +8,11 @@ internal static class ManagerTeamEmployeePicker
 {
     private const long ShowTeamListOption = 0;
 
-    public static async Task<long?> PromptEmployeeIdAsync(RestClient client)
+    public static async Task<long?> PromptEmployeeIdAsync(AppClients clients)
     {
         while (true)
         {
-            Console.Write($"Enter Employee ID (enter {ShowTeamListOption} to view all employees under you, B to go back): ");
+            Console.Write($"Enter Employee/Resource ID (enter {ShowTeamListOption} to view all employees/resources under you, B to go back): ");
             var input = Console.ReadLine()?.Trim();
 
             if (string.Equals(input, "B", StringComparison.OrdinalIgnoreCase))
@@ -26,7 +26,7 @@ internal static class ManagerTeamEmployeePicker
 
             if (enteredValue == ShowTeamListOption)
             {
-                await DisplayTeamEmployeesAsync(client);
+                await DisplayTeamEmployeesAsync(clients);
                 continue;
             }
 
@@ -40,9 +40,9 @@ internal static class ManagerTeamEmployeePicker
         }
     }
 
-    private static async Task DisplayTeamEmployeesAsync(RestClient client)
+    private static async Task DisplayTeamEmployeesAsync(AppClients clients)
     {
-        var teamEmployees = await FetchTeamEmployeesAsync(client);
+        var teamEmployees = await FetchTeamEmployeesAsync(clients);
         if (teamEmployees is null)
         {
             ConsoleHelper.PrintError("Could not load your team employees.");
@@ -57,18 +57,18 @@ internal static class ManagerTeamEmployeePicker
         }
 
         Console.WriteLine();
-        Console.WriteLine($"{"Employee ID",-12}{"Employee Name"}");
+        Console.WriteLine($"{"Employee/Resource ID",-22}{"Employee/Resource Name"}");
         ConsoleHelper.PrintDivider();
 
         foreach (var employee in teamEmployees)
-            Console.WriteLine($"{employee.Id,-12}{employee.Name}");
+            Console.WriteLine($"{employee.Id,-22}{employee.Name}");
 
         ConsoleHelper.PrintDivider();
     }
 
-    private static async Task<IReadOnlyList<TeamEmployeeSummary>?> FetchTeamEmployeesAsync(RestClient client)
+    private static async Task<IReadOnlyList<TeamEmployeeSummary>?> FetchTeamEmployeesAsync(AppClients clients)
     {
-        var dashboard = await client.GetAsync<TeamDashboard>("/api/employees/my-team", requireAuth: true);
+        var dashboard = await clients.Manager.GetTeamDashboardAsync();
         if (dashboard is null)
             return null;
 

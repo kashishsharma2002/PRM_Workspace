@@ -4,10 +4,11 @@ using Microsoft.Extensions.Logging;
 using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Ai;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class AiResponseParser(ILogger<AiResponseParser> logger)
+public class AiResponseParser(ILogger<AiResponseParser> logger) : IAiResponseParser
 {
     private static readonly JsonSerializerOptions DeserializeOptions = new() { PropertyNameCaseInsensitive = true };
 

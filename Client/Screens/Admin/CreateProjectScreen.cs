@@ -5,28 +5,21 @@ namespace Client.Screens.Admin;
 
 public static class CreateProjectScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Create Project");
 
-        Console.Write("Project Name        : ");
-        var name = Console.ReadLine()?.Trim() ?? string.Empty;
-
+        var name = FormInputHelper.PromptRequired("Project Name");
         Console.Write("Description         : ");
         var description = Console.ReadLine()?.Trim();
 
-        Console.Write("Start Date          : (DD-MM-YYYY) ");
-        if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var startIso))
-        {
-            ConsoleHelper.PrintError("Invalid start date.");
-            return;
-        }
+        var startDate = FormInputHelper.PromptDateNotBeforeToday("Start Date");
+        var endDate = FormInputHelper.PromptDate("End Date");
 
-        Console.Write("End Date            : (DD-MM-YYYY) ");
-        if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var endIso))
+        while (endDate <= startDate)
         {
-            ConsoleHelper.PrintError("Invalid end date.");
-            return;
+            ConsoleHelper.PrintError($"End date must be after start date.");
+            endDate = FormInputHelper.PromptDate("End Date");
         }
 
         Console.WriteLine("Status              : (1) PLANNED  (2) ACTIVE  (3) ON_HOLD");
@@ -39,23 +32,12 @@ public static class CreateProjectScreen
             _ => string.Empty
         };
 
-        Console.Write("Assign Manager      : (Enter Manager User ID) ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var managerId))
-        {
-            ConsoleHelper.PrintError("Invalid manager user ID.");
-            return;
-        }
+        var managerId = FormInputHelper.PromptId("Assign Manager (User ID)");
+        var storyPoints = FormInputHelper.PromptInt("Total Story Points", minValue: 0);
 
-        Console.Write("Total Story Points  : ");
-        if (!int.TryParse(Console.ReadLine()?.Trim(), out var storyPoints) || storyPoints < 0)
+        if (string.IsNullOrWhiteSpace(status))
         {
-            ConsoleHelper.PrintError("Invalid story points.");
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(status))
-        {
-            ConsoleHelper.PrintError("All required fields must be provided.");
+            ConsoleHelper.PrintError("Status is required.");
             return;
         }
 
@@ -66,16 +48,16 @@ public static class CreateProjectScreen
 
         try
         {
-            var result = await client.PostAsync<CreateProjectResponse>("/api/projects", new CreateProjectRequest
+            var result = await clients.Admin.CreateProjectAsync(new CreateProjectRequest
             {
                 ProjectName = name,
                 Description = description,
-                StartDate = DateOnly.Parse(startIso),
-                EndDate = DateOnly.Parse(endIso),
+                StartDate = startDate,
+                EndDate = endDate,
                 ProjectStatus = status,
                 ManagerUserId = managerId,
                 TotalStoryPoints = storyPoints
-            }, requireAuth: true);
+            });
 
             if (result is not null)
                 ConsoleHelper.PrintSuccess($"Project created ({result.ProjectCode}).");

@@ -2,7 +2,8 @@ using Server.Common.Ai;
 using Server.Exceptions;
 using Server.Models.DTOs.Ai;
 using Server.Services.Ai;
-using Server.Services.Ai.Models;
+using Server.Models.DTOs.Ai.Context;
+using Tests.Helpers;
 
 namespace Tests;
 
@@ -22,16 +23,17 @@ public class TeamBuilderResponseNormalizerTests
     [Fact]
     public void Normalize_ConvertsDuplicateFilledToGap()
     {
+        var employeeName = MockData.Names.TeamBuilderEmployee;
         var response = new TeamBuilderResponseDto
         {
             Roles =
             [
-                FilledRole("Senior React Developer (1)", "Aarav Patel"),
-                FilledRole("Senior React Developer (2)", "Aarav Patel")
+                FilledRole("Senior React Developer (1)", employeeName),
+                FilledRole("Senior React Developer (2)", employeeName)
             ]
         };
 
-        var result = _normalizer.Normalize(response, Assignable("Aarav Patel"), All("Aarav Patel"));
+        var result = _normalizer.Normalize(response, Assignable(employeeName), All(employeeName));
 
         Assert.Equal(TeamBuilderConstants.StatusFilled, result.Roles[0].Status);
         Assert.Equal(TeamBuilderConstants.StatusGap, result.Roles[1].Status);
@@ -42,14 +44,15 @@ public class TeamBuilderResponseNormalizerTests
     [Fact]
     public void Normalize_ConvertsNotAssignableFilledToAllocatedElsewhereGap()
     {
+        var employeeName = MockData.Names.TeamBuilderAllocatedEmployee;
         var response = new TeamBuilderResponseDto
         {
-            Roles = [FilledRole("DevOps Engineer", "Ravi Kumar")]
+            Roles = [FilledRole("DevOps Engineer", employeeName)]
         };
 
         var allocatedCandidate = new AiSkillMatchCandidateContext
         {
-            FullName = "Ravi Kumar",
+            FullName = employeeName,
             RemainingCapacityPercentage = 50,
             ActiveAllocations =
             [
@@ -65,18 +68,19 @@ public class TeamBuilderResponseNormalizerTests
 
         Assert.Equal(TeamBuilderConstants.StatusGap, result.Roles[0].Status);
         Assert.Equal(TeamBuilderConstants.GapReasonAllocatedElsewhere, result.Roles[0].Gap?.ReasonType);
-        Assert.Equal("Ravi Kumar", result.Roles[0].Gap?.AlternativeEmployeeName);
+        Assert.Equal(employeeName, result.Roles[0].Gap?.AlternativeEmployeeName);
         Assert.Equal("2026-09-30", result.Roles[0].Gap?.AvailableFromDate);
     }
 
     [Fact]
     public void Normalize_Passes_WhenFilledAndGapRolesValid()
     {
+        var employeeName = MockData.Names.TeamBuilderJavaEmployee;
         var response = new TeamBuilderResponseDto
         {
             Roles =
             [
-                FilledRole("Senior Java Developer", "Anil Mehta"),
+                FilledRole("Senior Java Developer", employeeName),
                 new TeamBuilderRoleResultDto
                 {
                     RoleTitle = "QA Tester",
@@ -91,30 +95,31 @@ public class TeamBuilderResponseNormalizerTests
             ]
         };
 
-        var result = _normalizer.Normalize(response, Assignable("Anil Mehta"), All("Anil Mehta"));
+        var result = _normalizer.Normalize(response, Assignable(employeeName), All(employeeName));
 
         Assert.Equal(TeamBuilderConstants.StatusFilled, result.Roles[0].Status);
         Assert.Equal(TeamBuilderConstants.StatusGap, result.Roles[1].Status);
     }
 
     [Fact]
-    public void Normalize_HandlesDuplicateCandidateNamesInSeedData()
+    public void Normalize_HandlesDuplicateCandidateNamesInMockData()
     {
+        var employeeName = MockData.Names.TeamBuilderJavaEmployee;
         var response = new TeamBuilderResponseDto
         {
-            Roles = [FilledRole("Senior Java Developer", "Anil Mehta")]
+            Roles = [FilledRole("Senior Java Developer", employeeName)]
         };
 
         var duplicateCandidates = new List<AiSkillMatchCandidateContext>
         {
-            new() { FullName = "Anil Mehta", RemainingCapacityPercentage = 100 },
-            new() { FullName = "Anil Mehta", RemainingCapacityPercentage = 100 }
+            new() { FullName = employeeName, RemainingCapacityPercentage = 100 },
+            new() { FullName = employeeName, RemainingCapacityPercentage = 100 }
         };
 
         var result = _normalizer.Normalize(response, duplicateCandidates, duplicateCandidates);
 
         Assert.Equal(TeamBuilderConstants.StatusFilled, result.Roles[0].Status);
-        Assert.Equal("Anil Mehta", result.Roles[0].AssignedEmployeeName);
+        Assert.Equal(employeeName, result.Roles[0].AssignedEmployeeName);
     }
 
     [Fact]

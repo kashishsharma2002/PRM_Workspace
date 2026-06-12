@@ -6,21 +6,21 @@ namespace Client.Screens.Manager;
 
 public static class ResourceDashboardScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         while (true)
         {
             try
             {
-                ConsoleHelper.PrintHeader("Resource Dashboard");
-                var dashboard = await client.GetAsync<TeamDashboard>("/api/employees/my-team", requireAuth: true);
+                ConsoleHelper.PrintHeader("Employee/Resource Dashboard");
+                var dashboard = await clients.Manager.GetTeamDashboardAsync();
                 if (dashboard is null)
                 {
                     ConsoleHelper.PrintError("Could not load team dashboard.");
                     return;
                 }
 
-                Console.WriteLine($"ON BENCH  ({dashboard.BenchCount} employees available)");
+                Console.WriteLine($"ON BENCH  ({dashboard.BenchCount} employees/resources available)");
                 ConsoleHelper.PrintDivider();
                 Console.WriteLine($"{"ID",-6}{"Name",-18}{"Department",-14}Skills");
                 foreach (var employee in dashboard.BenchEmployees)
@@ -30,7 +30,7 @@ public static class ResourceDashboardScreen
                 }
 
                 Console.WriteLine();
-                Console.WriteLine("ACTIVE EMPLOYEES");
+                Console.WriteLine("ACTIVE EMPLOYEES/RESOURCES");
                 ConsoleHelper.PrintDivider();
                 Console.WriteLine($"{"ID",-6}{"Name",-18}{"Alloc %",-10}Availability");
                 foreach (var employee in dashboard.ActiveEmployees)
@@ -44,7 +44,7 @@ public static class ResourceDashboardScreen
                 ConsoleHelper.PrintDivider();
                 Console.WriteLine($"Bench: {dashboard.BenchCount}   |   Partial: {dashboard.PartialCount}");
                 ConsoleHelper.PrintDivider();
-                Console.WriteLine("[D] Drill into employee details     [B] Back");
+                Console.WriteLine("[D] Drill into employee/resource details     [B] Back");
                 Console.Write("Enter option: ");
                 var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
@@ -57,14 +57,14 @@ public static class ResourceDashboardScreen
                     continue;
                 }
 
-                Console.Write("Enter Employee ID: ");
+                Console.Write("Enter Employee/Resource ID: ");
                 if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
                 {
-                    ConsoleHelper.PrintError("Invalid employee ID.");
+                    ConsoleHelper.PrintError("Invalid employee/resource ID.");
                     continue;
                 }
 
-                await ShowMemberDetailAsync(client, employeeId);
+                await ShowMemberDetailAsync(clients, employeeId);
             }
             catch (SessionExpiredException)
             {
@@ -77,22 +77,20 @@ public static class ResourceDashboardScreen
         }
     }
 
-    private static async Task ShowMemberDetailAsync(RestClient client, long employeeId)
+    private static async Task ShowMemberDetailAsync(AppClients clients, long employeeId)
     {
-        var detail = await client.GetAsync<TeamMemberDetail>(
-            $"/api/employees/my-team/{employeeId}",
-            requireAuth: true);
+        var detail = await clients.Manager.GetTeamMemberDetailAsync(employeeId);
 
         if (detail is null)
         {
-            ConsoleHelper.PrintError("Employee not found.");
+            ConsoleHelper.PrintError("Employee/Resource not found.");
             return;
         }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"── {detail.FullName} ─────────────────────────────────");
         Console.WriteLine($"Department     : {detail.Department ?? "-"}");
-        Console.WriteLine($"Current Status : {detail.EmploymentStatus} ({detail.TotalUtilizationPercentage:0.#}%)");
+        Console.WriteLine($"Current Status : {detail.EmploymentStatus} (Employee/Resource) ({detail.TotalUtilizationPercentage:0.#}%)");
         Console.WriteLine($"Profile Skills : {string.Join(", ", detail.Skills.Select(s => s.SkillName))}");
         Console.WriteLine();
         Console.WriteLine("Active Allocations:");

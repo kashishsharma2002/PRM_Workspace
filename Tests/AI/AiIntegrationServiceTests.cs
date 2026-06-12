@@ -1,179 +1,270 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Server.AI;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Server.AI.Abstractions;
+using Server.AI.Configuration;
+using Server.AI.Infrastructure;
 using Server.Common;
-using Server.Common.Roles;
-using Server.Data;
+using Server.Common.Ai;
 using Server.Exceptions;
+using Server.Models.DTOs.Ai;
+using Server.Models.DTOs.Ai.Context;
 using Server.Models.Entities;
 using Server.Repositories.Ai;
 using Server.Repositories.Projects;
 using Server.Repositories.SystemConfig;
 using Server.Services.Ai;
-using Tests.Helpers;
+using Server.Services.Ai.Abstractions;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.AI;
 
-public class AiIntegrationServiceTests : IDisposable
+public class AiIntegrationServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<ILlmClientFactory> _llmClientFactoryMock;
+    private readonly Mock<ILlmClient> _llmClientMock;
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IAiRequestLogRepository> _aiRequestLogRepoMock;
+    private readonly Mock<IAiContextBuilder> _contextBuilderMock;
+    private readonly AiResponseParser _responseParser;
+    private readonly TeamBuilderResponseNormalizer _responseNormalizer;
+    private readonly SkillMatchCandidateFilter _candidateFilter;
+    private readonly SkillMatchRanker _ranker;
     private readonly AiIntegrationService _service;
-    private readonly StubLlmClient _llmClient = new();
+
+    private readonly long _managerId = 1;
+    private readonly long _projectId = 10;
 
     public AiIntegrationServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _llmClientFactoryMock = new Mock<ILlmClientFactory>();
+        _llmClientMock = new Mock<ILlmClient>();
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _aiRequestLogRepoMock = new Mock<IAiRequestLogRepository>();
+        _contextBuilderMock = new Mock<IAiContextBuilder>();
 
-        _context = new PrmDbContext(options);
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
+        _responseParser = new AiResponseParser(NullLogger<AiResponseParser>.Instance);
+        _responseNormalizer = new TeamBuilderResponseNormalizer();
+        _candidateFilter = new SkillMatchCandidateFilter(NullLogger<SkillMatchCandidateFilter>.Instance);
+        _ranker = new SkillMatchRanker(NullLogger<SkillMatchRanker>.Instance);
 
-        var aiContextRepository = new AiContextRepository(_context);
-        var contextBuilder = new AiContextBuilder(aiContextRepository);
-        var responseParser = new AiResponseParser(TestServiceFactory.CreateLogger<AiResponseParser>());
-        var teamBuilderResponseNormalizer = new TeamBuilderResponseNormalizer();
-        var factory = new LlmClientFactory([_llmClient]);
+        _llmClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(_llmClientMock.Object);
 
         _service = new AiIntegrationService(
-            new ProjectRepository(_context),
-            factory,
-            new SystemConfigRepository(_context),
-            new AiRequestLogRepository(_context),
-            contextBuilder,
-            responseParser,
-            teamBuilderResponseNormalizer,
-            TestServiceFactory.CreateLogger<AiIntegrationService>());
+            _projectRepoMock.Object,
+            _llmClientFactoryMock.Object,
+            _systemConfigRepoMock.Object,
+            _aiRequestLogRepoMock.Object,
+            _contextBuilderMock.Object,
+            _responseParser,
+            _responseNormalizer,
+            _candidateFilter,
+            _ranker,
+            NullLogger<AiIntegrationService>.Instance);
     }
 
     [Fact]
     public async Task GetRiskSummaryAsync_ThrowsNotFound_WhenManagerDoesNotOwnProject()
     {
-        var managerId = await SeedManagerAsync();
-        var otherManagerId = await SeedManagerAsync("other.mgr", "other@techserve.com");
-        var projectId = await SeedProjectAsync(otherManagerId);
+        // Arrange
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = _projectId, ManagerUserId = 999 }); // Different manager
 
+        // Act & Assert
         await Assert.ThrowsAsync<NotFoundAppException>(() =>
-            _service.GetRiskSummaryAsync(managerId, projectId));
+            _service.GetRiskSummaryAsync(_managerId, _projectId));
     }
 
     [Fact]
     public async Task GetSkillMatchAsync_ThrowsValidation_WhenRequirementTooLong()
     {
-        var managerId = await SeedManagerAsync();
-        var projectId = await SeedProjectAsync(managerId);
+        // Arrange
         var longRequirement = new string('x', 501);
 
+        // Act & Assert
         await Assert.ThrowsAsync<ValidationAppException>(() =>
-            _service.GetSkillMatchAsync(managerId, projectId, longRequirement));
+            _service.GetSkillMatchAsync(_managerId, _projectId, longRequirement));
     }
 
     [Fact]
     public async Task GetSkillMatchAsync_ThrowsNotFound_WhenManagerDoesNotOwnProject()
     {
-        var managerId = await SeedManagerAsync();
-        var otherManagerId = await SeedManagerAsync("other.skill.mgr", "other.skill@techserve.com");
-        var projectId = await SeedProjectAsync(otherManagerId);
+        // Arrange
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = _projectId, ManagerUserId = 999 });
 
+        // Act & Assert
         await Assert.ThrowsAsync<NotFoundAppException>(() =>
-            _service.GetSkillMatchAsync(managerId, projectId, "Need a developer"));
+            _service.GetSkillMatchAsync(_managerId, _projectId, "Need a developer"));
     }
 
     [Fact]
     public async Task GetOrganizationalSkillMatchAsync_ReturnsMatches_WithoutProjectOwnership()
     {
-        var managerId = await SeedManagerAsync();
-        var otherManagerId = await SeedManagerAsync("other.org.mgr", "other.org@techserve.com");
-        await SeedProjectAsync(otherManagerId);
-
-        _llmClient.NextResponse = """
+        // Arrange
+        var requirement = "Need a React developer";
+        var contextModel = new AiOrganizationalSkillMatchContextModel
+        {
+            Candidates = new List<AiSkillMatchCandidateContext>
             {
-              "projectId": 0,
-              "matches": [
+                new()
                 {
-                  "employeeName": "Org Employee",
-                  "skillName": "React",
-                  "matchScore": 91,
-                  "reason": "Available React developer"
+                    EmployeeId = 100,
+                    FullName = "Mock Org Employee",
+                    Skills = new List<AiSkillContext>
+                    {
+                        new() { SkillName = "React", ProficiencyLevel = "ADVANCED" }
+                    }
                 }
-              ]
             }
-            """;
+        };
 
-        var result = await _service.GetOrganizationalSkillMatchAsync(managerId, "Need a React developer");
+        _contextBuilderMock.Setup(b => b.BuildOrganizationalSkillMatchContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((contextModel, "{}"));
 
+        _llmClientMock.Setup(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""
+                {
+                  "projectId": 0,
+                  "matches": [
+                    {
+                      "employeeName": "Mock Org Employee",
+                      "skillName": "React",
+                      "matchScore": 91,
+                      "reason": "Available React developer"
+                    }
+                  ]
+                }
+                """);
+
+        // Act
+        var result = await _service.GetOrganizationalSkillMatchAsync(_managerId, requirement);
+
+        // Assert
         Assert.Equal(0, result.ProjectId);
         Assert.Single(result.Matches);
-        Assert.Equal("Org Employee", result.Matches[0].EmployeeName);
-        Assert.True(await _context.AiRequestLogs.AnyAsync());
+        Assert.Equal("Mock Org Employee", result.Matches[0].EmployeeName);
+        _aiRequestLogRepoMock.Verify(r => r.AddAsync(It.IsAny<AiRequestLog>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task GetSkillMatchAsync_ReturnsMatches_AndLogsRequest()
     {
-        var managerId = await SeedManagerAsync();
-        var projectId = await SeedProjectAsync(managerId);
-
-        _llmClient.NextResponse = """
+        // Arrange
+        var project = new Project { Id = _projectId, ManagerUserId = _managerId };
+        var requirement = "Need a C# developer";
+        var contextModel = new AiSkillMatchContextModel
+        {
+            Candidates = new List<AiSkillMatchCandidateContext>
             {
-              "projectId": 1,
-              "matches": [
+                new()
                 {
-                  "employeeName": "Test Employee",
-                  "skillName": "C#",
-                  "matchScore": 88,
-                  "reason": "Strong match"
+                    EmployeeId = 100,
+                    FullName = "Mock Test Employee",
+                    Skills = new List<AiSkillContext>
+                    {
+                        new() { SkillName = "C#", ProficiencyLevel = "ADVANCED" }
+                    }
                 }
-              ]
             }
-            """;
+        };
 
-        var result = await _service.GetSkillMatchAsync(managerId, projectId, "Need a C# developer");
+        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _contextBuilderMock.Setup(b => b.BuildSkillMatchContextAsync(_projectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((contextModel, "{}"));
 
+        _llmClientMock.Setup(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""
+                {
+                  "projectId": 10,
+                  "matches": [
+                    {
+                      "employeeName": "Mock Test Employee",
+                      "skillName": "C#",
+                      "matchScore": 88,
+                      "reason": "Strong match"
+                    }
+                  ]
+                }
+                """);
+
+        // Act
+        var result = await _service.GetSkillMatchAsync(_managerId, _projectId, requirement);
+
+        // Assert
         Assert.Single(result.Matches);
-        Assert.Equal("Test Employee", result.Matches[0].EmployeeName);
-        Assert.True(await _context.AiRequestLogs.AnyAsync());
+        Assert.Equal("Mock Test Employee", result.Matches[0].EmployeeName);
+        _aiRequestLogRepoMock.Verify(r => r.AddAsync(It.IsAny<AiRequestLog>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task BuildTeamAsync_ReturnsRoles_AndLogsRequest()
     {
-        var managerId = await SeedManagerAsync();
+        // Arrange
+        var contextModel = new AiTeamBuilderContextModel
+        {
+            AllCandidates = new List<AiSkillMatchCandidateContext>(),
+            AssignableCandidates = new List<AiSkillMatchCandidateContext>()
+        };
 
-        _llmClient.NextResponse = """
-            {
-              "roles": [
+        _contextBuilderMock.Setup(b => b.BuildTeamBuilderRawContextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(contextModel);
+        _contextBuilderMock.Setup(b => b.SerializeTeamBuilderContext(It.IsAny<AiTeamBuilderContextModel>()))
+            .Returns("{}");
+
+        _llmClientMock.Setup(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""
                 {
-                  "roleTitle": "QA Tester",
-                  "requiredSkills": [{"skillName": "Selenium", "minProficiency": "BEGINNER"}],
-                  "status": "GAP",
-                  "gap": {
-                    "reasonType": "NO_SKILL",
-                    "message": "No employee has Selenium skills."
-                  }
+                  "roles": [
+                    {
+                      "roleTitle": "QA Tester",
+                      "requiredSkills": [{"skillName": "Selenium", "minProficiency": "BEGINNER"}],
+                      "status": "GAP",
+                      "gap": {
+                        "reasonType": "NO_SKILL",
+                        "message": "No employee has Selenium skills."
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-            """;
+                """);
 
-        var result = await _service.BuildTeamAsync(
-            managerId,
-            "For a banking portal we need a QA Tester with Selenium.");
+        // Act
+        var result = await _service.BuildTeamAsync(_managerId, "For a banking portal we need a QA Tester with Selenium.");
 
+        // Assert
         Assert.Single(result.Roles);
         Assert.Equal("QA Tester", result.Roles[0].RoleTitle);
         Assert.Equal("GAP", result.Roles[0].Status);
-        Assert.True(await _context.AiRequestLogs.AnyAsync(l => l.RequestType == "TEAM_BUILDER"));
+        _aiRequestLogRepoMock.Verify(r => r.AddAsync(It.Is<AiRequestLog>(l => l.RequestType == "TEAM_BUILDER"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task BuildTeamAsync_RetriesOnce_WhenInitialParseFails()
     {
-        var managerId = await SeedManagerAsync();
+        // Arrange
+        var contextModel = new AiTeamBuilderContextModel
+        {
+            AllCandidates = new List<AiSkillMatchCandidateContext>(),
+            AssignableCandidates = new List<AiSkillMatchCandidateContext>()
+        };
 
-        _llmClient.EnqueueResponse("not valid json");
-        _llmClient.EnqueueResponse("""
+        _contextBuilderMock.Setup(b => b.BuildTeamBuilderRawContextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(contextModel);
+        _contextBuilderMock.Setup(b => b.SerializeTeamBuilderContext(It.IsAny<AiTeamBuilderContextModel>()))
+            .Returns("{}");
+
+        var callSeq = new Queue<string>(new[] {
+            "not valid json",
+            """
             {
               "roles": [
                 {
@@ -187,155 +278,71 @@ public class AiIntegrationServiceTests : IDisposable
                 }
               ]
             }
-            """);
+            """
+        });
 
-        var result = await _service.BuildTeamAsync(
-            managerId,
-            "For a banking portal we need a QA Tester with Selenium.");
+        _llmClientMock.Setup(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callSeq.Dequeue);
 
+        // Act
+        var result = await _service.BuildTeamAsync(_managerId, "For a banking portal we need a QA Tester with Selenium.");
+
+        // Assert
         Assert.Single(result.Roles);
         Assert.Equal("GAP", result.Roles[0].Status);
-        Assert.Equal(2, _llmClient.CallCount);
+        _llmClientMock.Verify(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
     public async Task BuildTeamAsync_NormalizesDuplicateAssignment_ToGap()
     {
-        var managerId = await SeedManagerAsync();
-        await SeedBenchEmployeeAsync("Aarav Patel");
+        // Arrange
+        var candidates = new List<AiSkillMatchCandidateContext>
+        {
+            new() { EmployeeId = 100, FullName = "Mock Team Builder Employee", RemainingCapacityPercentage = 100m }
+        };
+        var contextModel = new AiTeamBuilderContextModel
+        {
+            AllCandidates = candidates,
+            AssignableCandidates = candidates
+        };
 
-        _llmClient.NextResponse = """
-            {
-              "roles": [
+        _contextBuilderMock.Setup(b => b.BuildTeamBuilderRawContextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(contextModel);
+        _contextBuilderMock.Setup(b => b.SerializeTeamBuilderContext(It.IsAny<AiTeamBuilderContextModel>()))
+            .Returns("{}");
+
+        _llmClientMock.Setup(c => c.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""
                 {
-                  "roleTitle": "Senior React Developer (1)",
-                  "requiredSkills": [{"skillName": "React", "minProficiency": "ADVANCED"}],
-                  "status": "FILLED",
-                  "assignedEmployeeName": "Aarav Patel",
-                  "matchScore": 90,
-                  "reason": "React expert on bench."
-                },
-                {
-                  "roleTitle": "Senior React Developer (2)",
-                  "requiredSkills": [{"skillName": "React", "minProficiency": "ADVANCED"}],
-                  "status": "FILLED",
-                  "assignedEmployeeName": "Aarav Patel",
-                  "matchScore": 85,
-                  "reason": "Only React developer available."
+                  "roles": [
+                    {
+                      "roleTitle": "Senior React Developer (1)",
+                      "requiredSkills": [{"skillName": "React", "minProficiency": "ADVANCED"}],
+                      "status": "FILLED",
+                      "assignedEmployeeName": "Mock Team Builder Employee",
+                      "matchScore": 90,
+                      "reason": "React expert on bench."
+                    },
+                    {
+                      "roleTitle": "Senior React Developer (2)",
+                      "requiredSkills": [{"skillName": "React", "minProficiency": "ADVANCED"}],
+                      "status": "FILLED",
+                      "assignedEmployeeName": "Mock Team Builder Employee",
+                      "matchScore": 85,
+                      "reason": "Only React developer available."
+                    }
+                  ]
                 }
-              ]
-            }
-            """;
+                """);
 
-        var result = await _service.BuildTeamAsync(
-            managerId,
-            "Banking portal with 2 Senior React Developers.");
+        // Act
+        var result = await _service.BuildTeamAsync(_managerId, "Banking portal with 2 Senior React Developers.");
 
+        // Assert
         Assert.Equal(2, result.Roles.Count);
         Assert.Equal("FILLED", result.Roles[0].Status);
         Assert.Equal("GAP", result.Roles[1].Status);
         Assert.Equal("ALREADY_ASSIGNED_IN_TEAM", result.Roles[1].Gap?.ReasonType);
-    }
-
-    private async Task SeedBenchEmployeeAsync(string fullName)
-    {
-        var employeeRole = await _context.Roles.FirstAsync(r => r.RoleName == RoleConstants.Employee);
-        var now = DateTime.UtcNow;
-        var user = new User
-        {
-            FullName = fullName,
-            Email = $"{fullName.Replace(" ", ".").ToLowerInvariant()}@techserve.com",
-            Username = fullName.Replace(" ", ".").ToLowerInvariant(),
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        await _context.Users.AddAsync(user);
-        await _context.SaveChangesAsync();
-
-        await _context.UserRoles.AddAsync(new UserRole
-        {
-            UserId = user.Id,
-            RoleId = employeeRole.Id,
-            AssignedAt = now
-        });
-        await _context.ResourceProfiles.AddAsync(new ResourceProfile
-        {
-            UserId = user.Id,
-            ResourceStatus = "BENCH",
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
-    }
-
-    private async Task<long> SeedManagerAsync(string username = "ai.mgr", string email = "ai.mgr@techserve.com")
-    {
-        var managerRole = await _context.Roles.FirstAsync(r => r.RoleName == RoleConstants.Manager);
-        var now = DateTime.UtcNow;
-        var user = new User
-        {
-            FullName = "AI Manager",
-            Email = email,
-            Username = username,
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        await _context.Users.AddAsync(user);
-        await _context.SaveChangesAsync();
-
-        await _context.UserRoles.AddAsync(new UserRole
-        {
-            UserId = user.Id,
-            RoleId = managerRole.Id,
-            AssignedAt = now
-        });
-        await _context.SaveChangesAsync();
-        return user.Id;
-    }
-
-    private async Task<long> SeedProjectAsync(long managerUserId)
-    {
-        var project = new Project
-        {
-            ProjectName = "AI Test Project",
-            ProjectCode = $"PRJ-{Guid.NewGuid():N}"[..12],
-            ManagerUserId = managerUserId,
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            StartDate = new DateOnly(2026, 1, 1),
-            EndDate = new DateOnly(2026, 12, 31),
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        await _context.Projects.AddAsync(project);
-        await _context.SaveChangesAsync();
-        return project.Id;
-    }
-
-    public void Dispose() => _context.Dispose();
-
-    private sealed class StubLlmClient : ILlmClient
-    {
-        private readonly Queue<string> _queuedResponses = new();
-
-        public string ProviderKey => LlmProviders.Gemini;
-        public string NextResponse { get; set; } = "{}";
-        public int CallCount { get; private set; }
-
-        public void EnqueueResponse(string response) => _queuedResponses.Enqueue(response);
-
-        public Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            if (_queuedResponses.Count > 0)
-                return Task.FromResult(_queuedResponses.Dequeue());
-
-            return Task.FromResult(NextResponse);
-        }
     }
 }

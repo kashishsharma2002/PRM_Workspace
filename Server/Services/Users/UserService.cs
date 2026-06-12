@@ -14,7 +14,7 @@ using Server.Services.Shared;
 namespace Server.Services.Users;
 
 public class UserService(
-    PrmDbContext context,
+    IDbTransactionManager transactionManager,
     IUserRepository userRepository,
     IEmployeeRepository employeeRepository,
     IRoleRepository roleRepository,
@@ -38,7 +38,7 @@ public class UserService(
 
         var now = DateTime.UtcNow;
 
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
         try
         {
             var (department, designation) = ResolveDepartmentAndDesignation(role, request);
@@ -303,7 +303,7 @@ public class UserService(
 
         var now = DateTime.UtcNow;
 
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await transactionManager.BeginTransactionAsync(cancellationToken);
         try
         {
             await roleRepository.ReplaceUserRoleAsync(userId, roleEntity.Id, actorUserId, cancellationToken);

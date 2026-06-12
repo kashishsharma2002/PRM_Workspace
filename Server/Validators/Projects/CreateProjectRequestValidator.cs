@@ -8,12 +8,15 @@ public class CreateProjectRequestValidator : AbstractValidator<CreateProjectRequ
 {
     public CreateProjectRequestValidator()
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
         RuleFor(x => x.ProjectName)
             .NotEmpty().WithMessage("Project name is required.")
             .MaximumLength(200);
 
         RuleFor(x => x.StartDate)
-            .NotEmpty().WithMessage("Start date is required.");
+            .NotEmpty().WithMessage("Start date is required.")
+            .GreaterThanOrEqualTo(today).WithMessage("Start date cannot be in the past.");
 
         RuleFor(x => x.EndDate)
             .NotEmpty().WithMessage("End date is required.")

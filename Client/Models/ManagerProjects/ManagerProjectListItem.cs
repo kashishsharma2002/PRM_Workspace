@@ -1,4 +1,4 @@
-﻿namespace Client.Models.ManagerProjects;
+namespace Client.Models.ManagerProjects;
 
 public class ManagerProjectListItem
 {
@@ -6,4 +6,5 @@ public class ManagerProjectListItem
     public string ProjectName { get; set; } = string.Empty;
     public DateOnly EndDate { get; set; }
     public string HealthStatus { get; set; } = string.Empty;
+    public string ProjectStatus { get; set; } = string.Empty;
 }

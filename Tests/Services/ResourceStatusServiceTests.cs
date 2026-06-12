@@ -1,58 +1,35 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
-using Server.Common.Allocations;
-using Server.Data;
 using Server.Models.Entities;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
 using Server.Services.Employees;
-using Tests.Helpers;
+using Xunit;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Tests;
 
-public class ResourceStatusServiceTests : IDisposable
+public class ResourceStatusServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<ILogger<ResourceStatusService>> _loggerMock;
     private readonly ResourceStatusService _resourceStatusService;
-    private readonly long _profileId;
+    private readonly long _profileId = 123;
 
     public ResourceStatusServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _loggerMock = new Mock<ILogger<ResourceStatusService>>();
 
-        _context = new PrmDbContext(options);
-        _profileId = SeedProfile();
-        _resourceStatusService = TestServiceFactory.CreateResourceStatusService(_context);
-    }
-
-    private long SeedProfile()
-    {
-        var now = DateTime.UtcNow;
-        var user = new User
-        {
-            Username = "bench.user",
-            Email = "bench@example.com",
-            FullName = "Bench User",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(user);
-        _context.SaveChanges();
-
-        var profile = new ResourceProfile
-        {
-            UserId = user.Id,
-            ResourceStatus = ResourceStatusConstants.Allocated,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(profile);
-        _context.SaveChanges();
-        return profile.Id;
+        _resourceStatusService = new ResourceStatusService(
+            _employeeRepoMock.Object,
+            _allocationRepoMock.Object,
+            _loggerMock.Object);
     }
 
     [Fact]
@@ -66,36 +43,38 @@ public class ResourceStatusServiceTests : IDisposable
     [Fact]
     public async Task ReconcileAllResourceStatusesAsync_UpdatesBenchWhenNoAllocations()
     {
+        // Arrange
+        var profile = new ResourceProfile { Id = _profileId, ResourceStatus = ResourceStatusConstants.Allocated };
+        _employeeRepoMock.Setup(r => r.GetAllAsync(null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ResourceProfile> { profile });
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectAllocation>()); // No active allocations
+
+        // Act
         var updated = await _resourceStatusService.ReconcileAllResourceStatusesAsync();
 
+        // Assert
         Assert.Equal(1, updated);
-        var profile = await _context.ResourceProfiles.FindAsync(_profileId);
-        Assert.Equal(ResourceStatusConstants.Bench, profile!.ResourceStatus);
+        Assert.Equal(ResourceStatusConstants.Bench, profile.ResourceStatus);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
+        _employeeRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ApplyStatusFromActiveAllocationsAsync_SetsPartiallyAllocated()
     {
-        var now = DateTime.UtcNow;
-        _context.ProjectAllocations.Add(new ProjectAllocation
-        {
-            ResourceProfileId = _profileId,
-            ProjectId = 1,
-            AllocationPercentage = 50,
-            AllocationStartDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            AllocationEndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1),
-            AllocationStatus = AllocationStatusConstants.Active,
-            AllocatedByUserId = 1,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        await _context.SaveChangesAsync();
+        // Arrange
+        var profile = new ResourceProfile { Id = _profileId, ResourceStatus = ResourceStatusConstants.Bench };
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdAsync(_profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectAllocation> { new ProjectAllocation { ResourceProfileId = _profileId, AllocationPercentage = 50m } });
 
+        // Act
         await _resourceStatusService.ApplyStatusFromActiveAllocationsAsync(_profileId);
 
-        var profile = await _context.ResourceProfiles.FindAsync(_profileId);
-        Assert.Equal(ResourceStatusConstants.PartiallyAllocated, profile!.ResourceStatus);
+        // Assert
+        Assert.Equal(ResourceStatusConstants.PartiallyAllocated, profile.ResourceStatus);
+        _employeeRepoMock.Verify(r => r.UpdateAsync(profile, It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    public void Dispose() => _context.Dispose();
 }

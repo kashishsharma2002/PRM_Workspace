@@ -5,29 +5,29 @@ namespace Client.Screens.Admin;
 
 public static class DeactivateEmployeeScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
-        ConsoleHelper.PrintHeader("Deactivate Employee");
+        ConsoleHelper.PrintHeader("Deactivate Employee/Resource");
 
-        Console.Write("Enter Employee ID: ");
+        Console.Write("Enter Employee/Resource ID: ");
         if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
         {
-            ConsoleHelper.PrintError("Invalid employee ID.");
+            ConsoleHelper.PrintError("Invalid employee/resource ID.");
             return;
         }
 
         try
         {
-            var detail = await client.GetAsync<EmployeeDetail>($"/api/employees/{employeeId}", requireAuth: true);
+            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
             if (detail is null)
             {
-                ConsoleHelper.PrintError("Employee not found.");
+                ConsoleHelper.PrintError("Employee/Resource not found.");
                 return;
             }
 
             if (!detail.IsActive)
             {
-                ConsoleHelper.PrintError("Employee is already inactive.");
+                ConsoleHelper.PrintError("Employee/Resource is already inactive.");
                 return;
             }
 
@@ -39,8 +39,8 @@ public static class DeactivateEmployeeScreen
             if (detail.ActiveAllocations.Count > 0)
             {
                 Console.WriteLine();
-                Console.WriteLine($"⚠  Warning: This employee has {detail.ActiveAllocations.Count} active allocation(s).");
-                Console.WriteLine("   Ending their employment will remove them from:");
+                Console.WriteLine($"⚠  Warning: This employee/resource has {detail.ActiveAllocations.Count} active allocation(s).");
+                Console.WriteLine("   Ending their employment/allocations will remove them from:");
                 foreach (var allocation in detail.ActiveAllocations)
                 {
                     Console.WriteLine($"     - {allocation.ProjectName}  ({allocation.AllocationPercentage}%,  ends {allocation.AllocationEndDate:dd-MMM-yy})");
@@ -48,7 +48,7 @@ public static class DeactivateEmployeeScreen
             }
 
             Console.WriteLine();
-            Console.WriteLine("Are you sure you want to deactivate this employee?");
+            Console.WriteLine("Are you sure you want to deactivate this employee/resource?");
             Console.WriteLine("This will: set is_active = false, end all active allocations today,");
             Console.WriteLine("and block their login account.");
             Console.WriteLine();
@@ -56,8 +56,8 @@ public static class DeactivateEmployeeScreen
             if (Console.ReadLine()?.Trim().ToUpperInvariant() != "Y")
                 return;
 
-            await client.PutAsync<object>($"/api/employees/{employeeId}/deactivate", new { }, requireAuth: true);
-            ConsoleHelper.PrintSuccess("Employee deactivated.");
+            await clients.Admin.DeactivateEmployeeAsync(employeeId);
+            ConsoleHelper.PrintSuccess("Employee/Resource deactivated.");
         }
         catch (SessionExpiredException)
         {

@@ -6,23 +6,16 @@ namespace Client.Screens.Admin;
 
 public static class CreateUserAccountScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Create User Account");
 
-        Console.Write("Full Name         : ");
-        var fullName = Console.ReadLine()?.Trim() ?? string.Empty;
+        var fullName = FormInputHelper.PromptRequired("Full Name");
+        var email = FormInputHelper.PromptEmail();
+        var username = FormInputHelper.PromptRequired("Username");
+        var password = FormInputHelper.PromptPassword("Temporary Password");
 
-        Console.Write("Email             : ");
-        var email = Console.ReadLine()?.Trim() ?? string.Empty;
-
-        Console.Write("Username          : ");
-        var username = Console.ReadLine()?.Trim() ?? string.Empty;
-
-        Console.Write("Temporary Password: ");
-        var password = ReadPassword();
-
-        Console.WriteLine("Role              : (1) Admin  (2) Manager  (3) Employee");
+        Console.WriteLine("Role              : (1) Admin  (2) Manager  (3) Employee/Resource");
         Console.Write("Select role [1-3]: ");
         var roleChoice = Console.ReadLine()?.Trim();
         var role = roleChoice switch
@@ -58,11 +51,9 @@ public static class CreateUserAccountScreen
                 "Designation       :", DesignationConstants.EmployeeOptions, DesignationConstants.GetDisplayName);
         }
 
-        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email) ||
-            string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password) ||
-            string.IsNullOrWhiteSpace(role))
+        if (string.IsNullOrWhiteSpace(role))
         {
-            ConsoleHelper.PrintError("All fields are required.");
+            ConsoleHelper.PrintError("Role is required.");
             return;
         }
 
@@ -83,7 +74,7 @@ public static class CreateUserAccountScreen
 
         try
         {
-            var result = await client.PostAsync<CreateUserResponse>("/api/users", new CreateUserRequest
+            var result = await clients.Admin.CreateUserAsync(new CreateUserRequest
             {
                 FullName = fullName,
                 Email = email,
@@ -92,13 +83,13 @@ public static class CreateUserAccountScreen
                 Role = role,
                 Department = department,
                 Designation = designation
-            }, requireAuth: true);
+            });
 
             if (result is not null)
             {
                 var profileNote = role == RoleConstants.Employee
                     ? $"Resource profile created (ID: {result.EmployeeId})."
-                    : "No resource profile (employees only).";
+                    : "No resource profile (employees/resources only).";
                 ConsoleHelper.PrintSuccess(
                     $"Account created (User ID: {result.UserId}). {profileNote} " +
                     "User must change password on first login.");
@@ -113,28 +104,5 @@ public static class CreateUserAccountScreen
         {
             ErrorDisplayHelper.HandleException(ex);
         }
-    }
-
-    private static string ReadPassword()
-    {
-        var password = string.Empty;
-        ConsoleKeyInfo key;
-
-        while ((key = Console.ReadKey(intercept: true)).Key != ConsoleKey.Enter)
-        {
-            if (key.Key == ConsoleKey.Backspace && password.Length > 0)
-            {
-                password = password[..^1];
-                Console.Write("\b \b");
-            }
-            else if (!char.IsControl(key.KeyChar))
-            {
-                password += key.KeyChar;
-                Console.Write('*');
-            }
-        }
-
-        Console.WriteLine();
-        return password;
     }
 }

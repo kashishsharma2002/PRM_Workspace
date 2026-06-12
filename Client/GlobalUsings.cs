@@ -1,4 +1,5 @@
 global using Client.Models;
+global using Client.Models.Ai;
 global using Client.Models.Allocations;
 global using Client.Models.Auth;
 global using Client.Models.Employees;

@@ -1,5 +1,6 @@
-using Server.AI;
-using Server.Common;
+using Server.AI.Abstractions;
+using Server.AI.Configuration;
+using Server.AI.Infrastructure;
 
 namespace Tests;
 
@@ -16,32 +17,32 @@ public class LlmClientFactoryTests
     public void CreateClient_ReturnsRegisteredClient_ForKnownProvider()
     {
         var factory = new LlmClientFactory([
-            new StubLlmClient(LlmProviders.Gemini),
-            new StubLlmClient(LlmProviders.Groq)
+            new StubLlmClient(LlmProviderKeys.Gemini),
+            new StubLlmClient(LlmProviderKeys.Groq)
         ]);
 
-        var client = factory.CreateClient(LlmProviders.Gemini);
+        var client = factory.CreateClient(LlmProviderKeys.Gemini);
 
-        Assert.Equal(LlmProviders.Gemini, client.ProviderKey);
+        Assert.Equal(LlmProviderKeys.Gemini, client.ProviderKey);
     }
 
     [Fact]
     public void CreateClient_IsCaseInsensitive()
     {
         var factory = new LlmClientFactory([
-            new StubLlmClient(LlmProviders.Gemini),
-            new StubLlmClient(LlmProviders.Groq)
+            new StubLlmClient(LlmProviderKeys.Gemini),
+            new StubLlmClient(LlmProviderKeys.Groq)
         ]);
 
         var client = factory.CreateClient("groq");
 
-        Assert.Equal(LlmProviders.Groq, client.ProviderKey);
+        Assert.Equal(LlmProviderKeys.Groq, client.ProviderKey);
     }
 
     [Fact]
     public void CreateClient_Throws_ForUnknownProvider()
     {
-        var factory = new LlmClientFactory([new StubLlmClient(LlmProviders.Gemini)]);
+        var factory = new LlmClientFactory([new StubLlmClient(LlmProviderKeys.Gemini)]);
 
         var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient("OPENAI"));
 

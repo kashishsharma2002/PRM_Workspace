@@ -77,7 +77,7 @@ public class AiResponseParserTests
                   "roleTitle": "Senior Java Developer",
                   "requiredSkills": [{"skillName": "Java", "minProficiency": "ADVANCED"}],
                   "status": "FILLED",
-                  "assignedEmployeeName": "Anil Mehta",
+                  "assignedEmployeeName": "Mock Java Employee",
                   "matchScore": 90,
                   "reason": "Advanced Java on bench."
                 }
@@ -89,7 +89,7 @@ public class AiResponseParserTests
 
         Assert.Single(result.Roles);
         Assert.Equal("Senior Java Developer", result.Roles[0].RoleTitle);
-        Assert.Equal("Anil Mehta", result.Roles[0].AssignedEmployeeName);
+        Assert.Equal(MockData.Names.TeamBuilderJavaEmployee, result.Roles[0].AssignedEmployeeName);
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public class AiResponseParserTests
                   "roleTitle": "Senior Java Developer",
                   "requiredSkills": [{"skillName": "Java", "minProficiency": "ADVANCED"}],
                   "status": "FILLED",
-                  "assignedEmployeeName": "Anil Mehta",
+                  "assignedEmployeeName": "Mock Java Employee",
                   "matchScore": "90",
                   "reason": "Advanced Java on bench."
                 }
@@ -157,7 +157,7 @@ public class AiResponseParserTests
                   "roleTitle": "DevOps Engineer",
                   "requiredSkills": [{"skillName": "Docker", "minProficiency": "INTERMEDIATE"}],
                   "status": "FILLED",
-                  "assignedEmployeeName": "Ravi Kumar",
+                  "assignedEmployeeName": "Mock Allocated Team Employee",
                   "matchScore": 85,
                   "reason": "Docker skills on bench."
                 }

@@ -5,7 +5,7 @@ namespace Client.Screens;
 
 public static class LoginScreen
 {
-    public static async Task<bool> RunAsync(RestClient client)
+    public static async Task<bool> RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("PRM Login");
 
@@ -17,7 +17,7 @@ public static class LoginScreen
 
         try
         {
-            var result = await client.PostAsync<LoginResponse>("/api/auth/login", new LoginRequest
+            var result = await clients.Auth.LoginAsync(new LoginRequest
             {
                 Username = username,
                 Password = password
@@ -38,7 +38,7 @@ public static class LoginScreen
                 result.ManagerId,
                 result.ForcePasswordChange);
 
-            client.SetToken(result.Token);
+            clients.SetToken(result.Token);
             ConsoleHelper.PrintSuccess($"Welcome, {result.FullName}!");
             return true;
         }

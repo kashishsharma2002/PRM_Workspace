@@ -5,7 +5,7 @@ namespace Client.Screens.Admin;
 
 public static class DeactivateUserScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         ConsoleHelper.PrintHeader("Deactivate User");
 
@@ -19,7 +19,7 @@ public static class DeactivateUserScreen
 
         try
         {
-            var user = await UserLookupHelper.ResolveUserAsync(client, input);
+            var user = await UserLookupHelper.ResolveUserAsync(clients, input);
             if (user is null)
             {
                 ConsoleHelper.PrintError("User not found.");
@@ -43,7 +43,7 @@ public static class DeactivateUserScreen
             if (confirm != "Y")
                 return;
 
-            await client.PutAsync<object>($"/api/users/{user.Id}/deactivate", new { }, requireAuth: true);
+            await clients.Admin.DeactivateUserAsync(user.Id);
             ConsoleHelper.PrintSuccess("User deactivated.");
         }
         catch (SessionExpiredException ex)

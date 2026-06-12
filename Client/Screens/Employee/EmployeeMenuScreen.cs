@@ -1,16 +1,20 @@
-﻿using Client.Helpers;
+using Client.Helpers;
 using Client.HttpClients;
+using Client.Models.Timesheets;
 
 namespace Client.Screens.Employee;
 
 public static class EmployeeMenuScreen
 {
-    public static async Task<bool> RunAsync(RestClient client)
+    public static async Task<bool> RunAsync(AppClients clients)
     {
         while (true)
         {
-            ConsoleHelper.PrintHeader($"Welcome, {SessionStore.FullName}!");
-            await ShowReminderIfNeededAsync(client);
+            ConsoleHelper.PrintBoxHeader(
+                "EMPLOYEE/RESOURCE PANEL",
+                $"Welcome, {SessionStore.FullName}  |  {DateTime.Now:dd-MM-yyyy HH:mm}"
+            );
+            var reminder = await ShowReminderIfNeededAsync(clients);
             ConsoleHelper.PrintDivider();
             Console.WriteLine("1. Submit Timesheet");
             Console.WriteLine("2. View My Timesheets");
@@ -25,17 +29,18 @@ public static class EmployeeMenuScreen
                 switch (choice)
                 {
                     case "1":
-                        await SubmitTimesheetScreen.RunAsync(client);
+                        var defaultWeek = reminder?.ShowReminder == true ? reminder.WeekStartDate : (DateOnly?)null;
+                        await SubmitTimesheetScreen.RunAsync(clients, defaultWeek);
                         break;
                     case "2":
-                        await ViewTimesheetsScreen.RunAsync(client);
+                        await ViewTimesheetsScreen.RunAsync(clients);
                         break;
                     case "3":
-                        await ViewAllocationsScreen.RunAsync(client);
+                        await ViewAllocationsScreen.RunAsync(clients);
                         break;
                     case "0":
                         SessionStore.Clear();
-                        client.SetToken(null);
+                        clients.SetToken(null);
                         ConsoleHelper.PrintSuccess("Logged out.");
                         return false;
                     default:
@@ -50,19 +55,26 @@ public static class EmployeeMenuScreen
         }
     }
 
-    private static async Task ShowReminderIfNeededAsync(RestClient client)
+    private static async Task<TimesheetReminderResponse?> ShowReminderIfNeededAsync(AppClients clients)
     {
         try
         {
-            var reminder = await client.GetAsync<TimesheetReminderResponse>("/api/timesheets/reminder", requireAuth: true);
+            var reminder = await clients.Employee.GetReminderAsync();
             if (reminder?.ShowReminder == true)
             {
                 Console.WriteLine(
-                    $"  !  Reminder: Timesheet for week {DateInputHelper.FormatDisplay(reminder.WeekStartDate)} has not been submitted.");
+                    $"  ⚠  Reminder: Timesheet for week {DateInputHelper.FormatDisplay(reminder.WeekStartDate)} has not been submitted.");
             }
+            return reminder;
         }
-        catch
+        catch (SessionExpiredException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  [WARNING] Could not load timesheet reminder: {ex.Message}");
+            return null;
         }
     }
 }

@@ -5,12 +5,12 @@ namespace Client.Screens.Employee;
 
 public static class ViewAllocationsScreen
 {
-    public static async Task RunAsync(RestClient client)
+    public static async Task RunAsync(AppClients clients)
     {
         try
         {
             ConsoleHelper.PrintHeader("My Allocations");
-            var response = await client.GetAsync<EmployeeAllocationListResponse>("/api/allocations/my", requireAuth: true);
+            var response = await clients.Employee.GetMyAllocationsAsync();
             if (response is null || response.Allocations.Count == 0)
             {
                 Console.WriteLine("No allocations found.");

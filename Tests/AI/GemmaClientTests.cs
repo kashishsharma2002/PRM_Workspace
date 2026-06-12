@@ -1,46 +1,77 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
-using Server.AI;
+using Microsoft.Extensions.Options;
+using Moq;
+using Server.AI.Abstractions;
+using Server.AI.Configuration;
+using Server.AI.Infrastructure;
+using Server.AI.Providers;
 using Server.Common;
 using Server.Data;
 using Server.Models.Entities;
 using Server.Repositories.SystemConfig;
-using Tests.Helpers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.AI;
 
 public class GemmaClientTests : IDisposable
 {
-    private readonly PrmDbContext _context;
-    private readonly ConfigEncryptionHelper _encryption = new(DataProtectionProvider.Create("Tests"));
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<ILlmApiKeyResolver> _apiKeyResolverMock;
+    private readonly Mock<ILlmConfigResolver> _configResolverMock;
     private readonly CapturingHandler _handler = new();
     private readonly GemmaClient _client;
+    private readonly LlmSettings _llmSettings = new();
 
     public GemmaClientTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _apiKeyResolverMock = new Mock<ILlmApiKeyResolver>();
+        _configResolverMock = new Mock<ILlmConfigResolver>();
 
-        _context = new PrmDbContext(options);
-        SeedConfig();
+        _configResolverMock.Setup(r => r.ResolveModelAsync(
+            It.IsAny<ISystemConfigRepository>(),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()))
+            .Returns(async (ISystemConfigRepository repo, string key, string defModel, CancellationToken ct) =>
+            {
+                var config = await repo.GetByKeyAsync(key, ct);
+                return string.IsNullOrWhiteSpace(config?.ConfigValue) ? defModel : config.ConfigValue.Trim();
+            });
 
         var httpClientFactory = new StubHttpClientFactory(new HttpClient(_handler));
-        var repository = new SystemConfigRepository(_context);
-        _client = new GemmaClient(httpClientFactory, repository, _encryption, NullLogger<GemmaClient>.Instance);
+
+        _client = new GemmaClient(
+            httpClientFactory,
+            _systemConfigRepoMock.Object,
+            _apiKeyResolverMock.Object,
+            _configResolverMock.Object,
+            Options.Create(_llmSettings),
+            NullLogger<GemmaClient>.Instance);
     }
 
     [Fact]
     public async Task GenerateCompletionAsync_SendsEmptyApiKeyHeader_WhenKeyNotConfigured()
     {
+        // Arrange
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(string.Empty);
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SystemConfiguration?)null);
+
+        // Act
         var result = await _client.GenerateCompletionAsync("Hello");
 
+        // Assert
         Assert.Equal("Hello there!", result);
         Assert.NotNull(_handler.LastRequest);
         Assert.True(_handler.LastRequest!.Headers.TryGetValues("apikey", out var values));
@@ -48,18 +79,22 @@ public class GemmaClientTests : IDisposable
 
         var body = _handler.LastRequestBody!;
         using var json = JsonDocument.Parse(body);
-        Assert.Equal(LlmDefaults.GemmaModel, json.RootElement.GetProperty("model").GetString());
+        Assert.Equal(_llmSettings.Gemma.DefaultModel, json.RootElement.GetProperty("model").GetString());
     }
 
     [Fact]
     public async Task GenerateCompletionAsync_SendsDecryptedApiKeyHeader_WhenKeyConfigured()
     {
-        var config = await _context.SystemConfigurations.FirstAsync(c => c.ConfigKey == ConfigKeys.LlmApiKey);
-        config.ConfigValue = _encryption.Encrypt("ollama-secret");
-        await _context.SaveChangesAsync();
+        // Arrange
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("ollama-secret");
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SystemConfiguration?)null);
 
+        // Act
         await _client.GenerateCompletionAsync("Hello");
 
+        // Assert
         Assert.True(_handler.LastRequest!.Headers.TryGetValues("apikey", out var values));
         Assert.Equal("ollama-secret", values!.Single());
     }
@@ -67,33 +102,23 @@ public class GemmaClientTests : IDisposable
     [Fact]
     public async Task GenerateCompletionAsync_UsesConfiguredModel_WhenSetInSystemConfig()
     {
-        _context.SystemConfigurations.Add(new SystemConfiguration
-        {
-            ConfigKey = ConfigKeys.LlmModelGemma,
-            ConfigValue = "custom-gemma-model",
-            UpdatedAt = DateTime.UtcNow
-        });
-        await _context.SaveChangesAsync();
+        // Arrange
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(string.Empty);
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemConfiguration { ConfigKey = ConfigKeys.LlmModelGemma, ConfigValue = "custom-gemma-model" });
 
+        // Act
         await _client.GenerateCompletionAsync("Hello");
 
+        // Assert
         var body = _handler.LastRequestBody!;
         using var json = JsonDocument.Parse(body);
         Assert.Equal("custom-gemma-model", json.RootElement.GetProperty("model").GetString());
     }
 
-    private void SeedConfig()
-    {
-        var now = DateTime.UtcNow;
-        _context.SystemConfigurations.AddRange(
-            new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = string.Empty, UpdatedAt = now },
-            new SystemConfiguration { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = LlmProviders.Gemma, UpdatedAt = now });
-        _context.SaveChanges();
-    }
-
     public void Dispose()
     {
-        _context.Dispose();
         _handler.Dispose();
     }
 

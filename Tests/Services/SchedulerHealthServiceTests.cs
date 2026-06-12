@@ -1,302 +1,169 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Server.Common;
-using Server.Data;
+using Server.Exceptions;
+using Server.Models.DTOs.Projects;
 using Server.Models.Entities;
-using Tests.Helpers;
+using Server.Repositories.Roles;
+using Server.Repositories.Users;
+using Server.Repositories.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Repositories.SystemConfig;
+using Server.Services.Shared;
+using Server.Services.Projects;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
-namespace Tests;
+namespace Tests.Services;
 
-public class SchedulerHealthServiceTests : IDisposable
+public class SchedulerHealthServiceTests
 {
-    private readonly PrmDbContext _context;
+    private readonly Mock<IProjectRepository> _projectRepoMock;
+    private readonly Mock<IMilestoneRepository> _milestoneRepoMock;
+    private readonly Mock<IUserRepository> _userRepoMock;
+    private readonly Mock<IRoleRepository> _roleRepoMock;
+    private readonly Mock<IAllocationRepository> _allocationRepoMock;
+    private readonly Mock<IEmployeeRepository> _employeeRepoMock;
+    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ILogger<ProjectService>> _loggerMock;
     private readonly ProjectService _projectService;
-    private readonly long _cleanProjectId;
-    private readonly long _overdueProjectId;
-    private readonly long _multiFlagProjectId;
+
+    private readonly long _cleanProjectId = 10;
+    private readonly long _overdueProjectId = 20;
+    private readonly long _multiFlagProjectId = 30;
 
     public SchedulerHealthServiceTests()
     {
-        var options = new DbContextOptionsBuilder<PrmDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        _projectRepoMock = new Mock<IProjectRepository>();
+        _milestoneRepoMock = new Mock<IMilestoneRepository>();
+        _userRepoMock = new Mock<IUserRepository>();
+        _roleRepoMock = new Mock<IRoleRepository>();
+        _allocationRepoMock = new Mock<IAllocationRepository>();
+        _employeeRepoMock = new Mock<IEmployeeRepository>();
+        _timesheetRepoMock = new Mock<ITimesheetRepository>();
+        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _loggerMock = new Mock<ILogger<ProjectService>>();
 
-        _context = new PrmDbContext(options);
-        (_cleanProjectId, _overdueProjectId, _multiFlagProjectId) = SeedData();
-
-        _projectService = CreateProjectService(new ProjectRepository(_context));
+        _projectService = new ProjectService(
+            _projectRepoMock.Object,
+            _milestoneRepoMock.Object,
+            _userRepoMock.Object,
+            _roleRepoMock.Object,
+            _allocationRepoMock.Object,
+            _employeeRepoMock.Object,
+            _timesheetRepoMock.Object,
+            _systemConfigRepoMock.Object,
+            _auditServiceMock.Object,
+            _loggerMock.Object);
     }
 
-    private ProjectService CreateProjectService(IProjectRepository projectRepository) =>
-        new(
-            projectRepository,
-            new MilestoneRepository(_context),
-            new UserRepository(_context),
-            TestServiceFactory.CreateRoleRepository(_context),
-            new AllocationRepository(_context),
-            new EmployeeRepository(_context),
-            new TimesheetRepository(_context),
-            new SystemConfigRepository(_context),
-            TestServiceFactory.CreateAuditService(_context),
-            TestServiceFactory.CreateLogger<ProjectService>());
-
-    private (long cleanId, long overdueId, long multiFlagId) SeedData()
+    private void SetupDefaultRepos(List<Project> activeProjects, List<ProjectMilestone> milestones, List<ProjectAllocation> allocations, Dictionary<long, decimal> loggedHours)
     {
-        TestDataHelper.SeedRolesAsync(_context).GetAwaiter().GetResult();
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
-        var managerRole = _context.Roles.First(r => r.RoleName == Server.Common.Roles.RoleConstants.Manager);
-        var employeeRole = _context.Roles.First(r => r.RoleName == Server.Common.Roles.RoleConstants.Employee);
-
-        var manager = new User
-        {
-            Username = "ankit.shah",
-            Email = "ankit@techserve.com",
-            FullName = "Ankit Shah",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(manager);
-        _context.SaveChanges();
-
-        _context.UserRoles.Add(new UserRole
-        {
-            UserId = manager.Id,
-            RoleId = managerRole.Id,
-            AssignedAt = now
-        });
-
-        var clean = new Project
-        {
-            ProjectCode = "PRJ-000001",
-            ProjectName = "Clean Project",
-            StartDate = today.AddMonths(-2),
-            EndDate = today.AddMonths(6),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = manager.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-        var overdue = new Project
-        {
-            ProjectCode = "PRJ-000002",
-            ProjectName = "Overdue Project",
-            StartDate = today.AddMonths(-2),
-            EndDate = today.AddMonths(6),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = manager.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-        var multiFlag = new Project
-        {
-            ProjectCode = "PRJ-000003",
-            ProjectName = "Multi Flag Project",
-            StartDate = today.AddMonths(-2),
-            EndDate = today.AddDays(10),
-            ProjectStatus = "ACTIVE",
-            HealthStatus = "GREEN",
-            ManagerUserId = manager.Id,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-        _context.Projects.AddRange(clean, overdue, multiFlag);
-        _context.SaveChanges();
-
-        _context.ProjectMilestones.AddRange(
-            new ProjectMilestone
-            {
-                ProjectId = overdue.Id,
-                MilestoneTitle = "Late API",
-                DueDate = today.AddDays(-3),
-                MilestoneStatus = "IN_PROGRESS",
-                SortOrder = 1,
-                CreatedAt = now,
-                UpdatedAt = now
-            },
-            new ProjectMilestone
-            {
-                ProjectId = multiFlag.Id,
-                MilestoneTitle = "Late Testing",
-                DueDate = today.AddDays(-2),
-                MilestoneStatus = "IN_PROGRESS",
-                SortOrder = 1,
-                CreatedAt = now,
-                UpdatedAt = now
-            },
-            new ProjectMilestone
-            {
-                ProjectId = multiFlag.Id,
-                MilestoneTitle = "Go Live",
-                DueDate = today.AddDays(5),
-                MilestoneStatus = "NOT_STARTED",
-                SortOrder = 2,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-        _context.SaveChanges();
-
-        var employeeUser = new User
-        {
-            Username = "ravi.kumar",
-            Email = "ravi@techserve.com",
-            FullName = "Ravi Kumar",
-            PasswordHash = "hash",
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.Users.Add(employeeUser);
-        _context.SaveChanges();
-
-        _context.UserRoles.Add(new UserRole
-        {
-            UserId = employeeUser.Id,
-            RoleId = employeeRole.Id,
-            AssignedAt = now
-        });
-
-        var managerProfile = new ResourceProfile
-        {
-            UserId = manager.Id,
-            ResourceStatus = ResourceStatusConstants.Bench,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(managerProfile);
-        _context.SaveChanges();
-
-        var employee = new ResourceProfile
-        {
-            UserId = employeeUser.Id,
-            ManagerId = manager.Id,
-            ResourceStatus = ResourceStatusConstants.Allocated,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _context.ResourceProfiles.Add(employee);
-        _context.SaveChanges();
-
-        _context.ProjectAllocations.Add(new ProjectAllocation
-        {
-            ResourceProfileId = employee.Id,
-            ProjectId = multiFlag.Id,
-            AllocationPercentage = 100m,
-            AllocationStartDate = lastWeek.AddMonths(-1),
-            AllocationEndDate = today.AddMonths(3),
-            AllocationStatus = "ACTIVE",
-            AllocatedByUserId = manager.Id,
-            CreatedAt = now,
-            UpdatedAt = now
-        });
-        _context.SaveChanges();
-
-        _context.SystemConfigurations.Add(new SystemConfiguration
-        {
-            ConfigKey = ConfigKeys.MaxWeeklyHours,
-            ConfigValue = "40",
-            Description = "Max weekly hours",
-            UpdatedAt = now
-        });
-        _context.SaveChanges();
-
-        return (clean.Id, overdue.Id, multiFlag.Id);
+        _projectRepoMock.Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(activeProjects);
+        _milestoneRepoMock.Setup(r => r.GetByProjectIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(milestones);
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = "40" });
+        _allocationRepoMock.Setup(r => r.GetAllActiveForWeekAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(allocations);
+        _timesheetRepoMock.Setup(r => r.GetLoggedHoursByProjectForWeekAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(loggedHours);
     }
 
     [Fact]
     public async Task EvaluateAllProjectsHealthAsync_NoFlags_StaysGreen()
     {
+        // Arrange
+        var projects = new List<Project>
+        {
+            new() { Id = _cleanProjectId, ProjectName = "Clean Project", StartDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)), EndDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(6)), ProjectStatus = "ACTIVE", HealthStatus = "GREEN" }
+        };
+        SetupDefaultRepos(projects, new List<ProjectMilestone>(), new List<ProjectAllocation>(), new Dictionary<long, decimal>());
+
+        // Act
         await _projectService.EvaluateAllProjectsHealthAsync();
 
-        var project = await _context.Projects.FindAsync(_cleanProjectId);
-        Assert.NotNull(project);
-        Assert.Equal("GREEN", project.HealthStatus);
+        // Assert
+        _projectRepoMock.Verify(r => r.UpdateHealthStatusAsync(_cleanProjectId, "GREEN", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task EvaluateAllProjectsHealthAsync_OverdueMilestone_SetsAmber()
     {
+        // Arrange
+        var projects = new List<Project>
+        {
+            new() { Id = _overdueProjectId, ProjectName = "Overdue Project", StartDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)), EndDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(6)), ProjectStatus = "ACTIVE", HealthStatus = "GREEN" }
+        };
+        var milestones = new List<ProjectMilestone>
+        {
+            new() { ProjectId = _overdueProjectId, MilestoneTitle = "Late API", DueDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-3)), MilestoneStatus = "IN_PROGRESS" }
+        };
+        SetupDefaultRepos(projects, milestones, new List<ProjectAllocation>(), new Dictionary<long, decimal>());
+
+        // Act
         await _projectService.EvaluateAllProjectsHealthAsync();
 
-        var project = await _context.Projects.FindAsync(_overdueProjectId);
-        Assert.NotNull(project);
-        Assert.Equal("AMBER", project.HealthStatus);
+        // Assert
+        _projectRepoMock.Verify(r => r.UpdateHealthStatusAsync(_overdueProjectId, "AMBER", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task EvaluateAllProjectsHealthAsync_MultipleFlags_SetsRed()
     {
+        // Arrange
+        var projects = new List<Project>
+        {
+            new() { Id = _multiFlagProjectId, ProjectName = "Multi Flag Project", StartDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)), EndDate = DateOnly.FromDateTime(DateTime.Today.AddDays(10)), ProjectStatus = "ACTIVE", HealthStatus = "GREEN" }
+        };
+        var milestones = new List<ProjectMilestone>
+        {
+            new() { ProjectId = _multiFlagProjectId, MilestoneTitle = "Late Testing", DueDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-2)), MilestoneStatus = "IN_PROGRESS" },
+            new() { ProjectId = _multiFlagProjectId, MilestoneTitle = "Go Live", DueDate = DateOnly.FromDateTime(DateTime.Today.AddDays(5)), MilestoneStatus = "NOT_STARTED" }
+        };
+        var allocations = new List<ProjectAllocation>
+        {
+            new() { ResourceProfileId = 5, ProjectId = _multiFlagProjectId, AllocationPercentage = 100m }
+        };
+        SetupDefaultRepos(projects, milestones, allocations, new Dictionary<long, decimal>());
+
+        // Act
         await _projectService.EvaluateAllProjectsHealthAsync();
 
-        var project = await _context.Projects.FindAsync(_multiFlagProjectId);
-        Assert.NotNull(project);
-        Assert.Equal("RED", project.HealthStatus);
+        // Assert
+        _projectRepoMock.Verify(r => r.UpdateHealthStatusAsync(_multiFlagProjectId, "RED", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task EvaluateAllProjectsHealthAsync_OneProjectFails_OthersStillUpdated()
     {
-        var failingRepo = new FailingProjectRepository(_context, _overdueProjectId);
-        var service = CreateProjectService(failingRepo);
-
-        var result = await service.EvaluateAllProjectsHealthAsync();
-
-        Assert.Equal(2, result.EvaluatedCount);
-        Assert.Equal(1, result.FailedCount);
-
-        var clean = await _context.Projects.FindAsync(_cleanProjectId);
-        Assert.NotNull(clean);
-        Assert.Equal("GREEN", clean.HealthStatus);
-    }
-
-    public void Dispose() => _context.Dispose();
-
-    private sealed class FailingProjectRepository(PrmDbContext context, long failProjectId) : IProjectRepository
-    {
-        private readonly ProjectRepository _inner = new(context);
-
-        public Task<Project?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-            _inner.GetByIdAsync(id, cancellationToken);
-
-        public Task<IReadOnlyList<Project>> GetAllAsync(CancellationToken cancellationToken = default) =>
-            _inner.GetAllAsync(cancellationToken);
-
-        public Task<IReadOnlyList<Project>> GetByManagerUserIdAsync(long managerUserId, CancellationToken cancellationToken = default) =>
-            _inner.GetByManagerUserIdAsync(managerUserId, cancellationToken);
-
-        public Task<IReadOnlyList<Project>> GetActiveAsync(CancellationToken cancellationToken = default) =>
-            _inner.GetActiveAsync(cancellationToken);
-
-        public Task UpdateHealthStatusAsync(long projectId, string healthStatus, CancellationToken cancellationToken = default)
+        // Arrange
+        var projects = new List<Project>
         {
-            if (projectId == failProjectId)
-                throw new InvalidOperationException("Simulated health update failure.");
+            new() { Id = _cleanProjectId, ProjectName = "Clean Project", StartDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)), EndDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(6)), ProjectStatus = "ACTIVE", HealthStatus = "GREEN" },
+            new() { Id = _overdueProjectId, ProjectName = "Overdue Project", StartDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(-2)), EndDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(6)), ProjectStatus = "ACTIVE", HealthStatus = "GREEN" }
+        };
+        SetupDefaultRepos(projects, new List<ProjectMilestone>(), new List<ProjectAllocation>(), new Dictionary<long, decimal>());
 
-            return _inner.UpdateHealthStatusAsync(projectId, healthStatus, cancellationToken);
-        }
+        _projectRepoMock.Setup(r => r.UpdateHealthStatusAsync(_overdueProjectId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Simulated update failure."));
 
-        public Task<bool> ExistsByCodeAsync(string projectCode, CancellationToken cancellationToken = default) =>
-            _inner.ExistsByCodeAsync(projectCode, cancellationToken);
+        // Act
+        var result = await _projectService.EvaluateAllProjectsHealthAsync();
 
-        public Task AddAsync(Project project, CancellationToken cancellationToken = default) =>
-            _inner.AddAsync(project, cancellationToken);
-
-        public Task UpdateAsync(Project project, CancellationToken cancellationToken = default) =>
-            _inner.UpdateAsync(project, cancellationToken);
-
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-            _inner.SaveChangesAsync(cancellationToken);
+        // Assert
+        Assert.Equal(1, result.EvaluatedCount);
+        Assert.Equal(1, result.FailedCount);
+        _projectRepoMock.Verify(r => r.UpdateHealthStatusAsync(_cleanProjectId, "GREEN", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -1,111 +1,14 @@
-using System.Text;
-using System.Text.Json;
-using FluentValidation;
-using FluentValidation.AspNetCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using Server.AI;
-using Server.Common;
-using Server.Common.Errors;
-using Server.Repositories.Ai;
-using Server.Services.Ai;
-using Server.Services.Employees;
-using Server.Services.Shared;
-using Server.Services.SystemConfig;
 using Server.Data;
+using Server.DependencyInjection;
 using Server.Middleware;
-using Server.Scheduler;
 using Server.Seed;
-using Server.Validators.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
-builder.Services.AddDbContext<PrmDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddScoped<IRoleRepository, RoleRepository>();
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
-builder.Services.AddScoped<ISkillRepository, SkillRepository>();
-builder.Services.AddScoped<IEmployeeSkillRepository, EmployeeSkillRepository>();
-builder.Services.AddScoped<IAllocationRepository, AllocationRepository>();
-builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
-builder.Services.AddScoped<IMilestoneRepository, MilestoneRepository>();
-builder.Services.AddScoped<ISystemConfigRepository, SystemConfigRepository>();
-builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
-builder.Services.AddScoped<IAuditService, AuditService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IEmployeeService, EmployeeService>();
-builder.Services.AddScoped<IProjectService, ProjectService>();
-builder.Services.AddScoped<IAllocationService, AllocationService>();
-builder.Services.AddScoped<ITimesheetService, TimesheetService>();
-builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
-builder.Services.AddScoped<IActivityTagRepository, ActivityTagRepository>();
-builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
-builder.Services.AddScoped<IResourceStatusService, ResourceStatusService>();
-builder.Services.AddScoped<ISchedulerJobLogRepository, SchedulerJobLogRepository>();
-builder.Services.AddHostedService<BackgroundScheduler>();
-builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
-builder.Services.AddDataProtection();
-builder.Services.AddSingleton<ConfigEncryptionHelper>();
-builder.Services.AddScoped<IAiContextRepository, AiContextRepository>();
-builder.Services.AddScoped<IAiRequestLogRepository, AiRequestLogRepository>();
-builder.Services.AddScoped<AiContextBuilder>();
-builder.Services.AddScoped<AiResponseParser>();
-builder.Services.AddScoped<TeamBuilderResponseNormalizer>();
-builder.Services.AddScoped<IAiIntegrationService, AiIntegrationService>();
-builder.Services.AddScoped<ILlmClient, GeminiClient>();
-builder.Services.AddScoped<ILlmClient, GroqClient>();
-builder.Services.AddScoped<ILlmClient, GemmaClient>();
-builder.Services.AddScoped<ILlmClientFactory, LlmClientFactory>();
-builder.Services.AddHttpClient();
-
-var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
-    ?? throw new InvalidOperationException("JwtSettings configuration is missing.");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSettings.Issuer,
-            ValidAudience = jwtSettings.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
-            NameClaimType = "sub",
-            RoleClaimType = "role"
-        };
-    });
-
-builder.Services.AddAuthorization();
-builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(options =>
-    {
-        options.InvalidModelStateResponseFactory = context =>
-        {
-            var errors = context.ModelState.Values
-                .SelectMany(v => v.Errors)
-                .Select(e => e.ErrorMessage)
-                .ToList();
-
-            return new BadRequestObjectResult(ApiResponse<object>.Fail("Validation failed.", ErrorCodes.ValidationFailed, errors));
-        };
-    })
-    .AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerConfiguration();
+builder.Services.AddPrmServices(builder.Configuration);
+builder.Services.AddPrmAi(builder.Configuration);
+builder.Services.AddPrmAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
