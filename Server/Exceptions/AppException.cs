@@ -48,3 +48,9 @@ public sealed class ConflictAppException : AppException
     public ConflictAppException(string message, string errorCode = ErrorCodes.Conflict)
         : base(message, StatusCodes.Status409Conflict, errorCode) { }
 }
+
+public sealed class AiServiceAppException : AppException
+{
+    public AiServiceAppException(string message, string errorCode = ErrorCodes.LlmRequestFailed)
+        : base(message, StatusCodes.Status503ServiceUnavailable, errorCode) { }
+}

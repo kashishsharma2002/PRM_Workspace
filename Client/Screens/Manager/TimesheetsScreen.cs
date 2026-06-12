@@ -37,7 +37,7 @@ public static class TimesheetsScreen
 
             ConsoleHelper.PrintDivider();
             Console.WriteLine($"Week: {DateInputHelper.FormatDisplay(response.WeekStartDate)}");
-            Console.WriteLine($"{"Employee",-18}{"Project",-18}{"Hrs",-6}{"Status"}");
+            Console.WriteLine($"{"ID",-8}{"Employee",-18}{"Project",-18}{"Hrs",-6}{"Status"}");
             ConsoleHelper.PrintDivider();
 
             if (response.Rows.Count == 0)
@@ -49,8 +49,9 @@ public static class TimesheetsScreen
                 foreach (var row in response.Rows)
                 {
                     var status = row.Status == "MISSED" ? $"{row.Status} !" : row.Status;
+                    var idDisplay = row.TimesheetId?.ToString() ?? "-";
                     Console.WriteLine(
-                        $"{row.EmployeeName,-18}{row.ProjectName,-18}{row.HoursLogged,4:0.#}   {status}");
+                        $"{idDisplay,-8}{row.EmployeeName,-18}{row.ProjectName,-18}{row.HoursLogged,4:0.#}   {status}");
                 }
             }
 

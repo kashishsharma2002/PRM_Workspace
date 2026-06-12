@@ -2,6 +2,7 @@ using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Allocations;
 using Client.Models.ManagerProjects;
+using Client.Models.Ai;
 
 namespace Client.Screens.Manager;
 
@@ -12,7 +13,7 @@ public static class AllocateResourceScreen
         while (true)
         {
             ConsoleHelper.PrintHeader("Allocate Resource");
-            Console.WriteLine("1. Find resource using AI (Phase 8)");
+            Console.WriteLine("1. Find resource using AI");
             Console.WriteLine("2. Allocate directly (I already know who I want)");
             Console.WriteLine("3. End an existing allocation");
             Console.WriteLine("4. Back");
@@ -25,7 +26,7 @@ public static class AllocateResourceScreen
                 switch (choice)
                 {
                     case "1":
-                        Console.WriteLine("AI-assisted allocation will be available in Phase 8.");
+                        await RunAiAllocationFlowAsync(client);
                         break;
                     case "2":
                         await RunDirectAllocationAsync(client);
@@ -239,5 +240,55 @@ public static class AllocateResourceScreen
                 $"Allocation ended. {selected.EmployeeName} freed from {detail.ProjectName} as of " +
                 $"{DateInputHelper.FormatDisplay(result.AllocationEndDate)}.");
         }
+    }
+
+    private static async Task RunAiAllocationFlowAsync(RestClient client)
+    {
+        ConsoleHelper.PrintHeader("Allocate Resource");
+
+        var selectedProject = await ManagerProjectPicker.PromptByNameOrIdAsync(client);
+        if (selectedProject is null)
+            return;
+
+        Console.WriteLine($"\nSelected project: {selectedProject.ProjectName} ({selectedProject.Id})");
+        Console.WriteLine("\nStep 2 — Describe your requirement");
+        Console.WriteLine("Type what kind of resource you need:");
+        Console.Write("> ");
+        var requirement = Console.ReadLine()?.Trim();
+        if (string.IsNullOrWhiteSpace(requirement))
+        {
+            ConsoleHelper.PrintError("Requirement description cannot be empty.");
+            return;
+        }
+
+        Console.WriteLine("\nSearching... (AI matching in progress)");
+        var url = $"/api/ai/projects/{selectedProject.Id}/skill-match?requirement={Uri.EscapeDataString(requirement)}";
+        var response = await client.GetAsync<AiSkillMatchResponse>(url, requireAuth: true);
+        if (response is null || response.Matches.Count == 0)
+        {
+            ConsoleHelper.PrintError("No AI matches found or server error occurred.");
+            return;
+        }
+
+        ConsoleHelper.PrintDivider();
+        Console.WriteLine("AI-MATCHED RESULTS");
+        ConsoleHelper.PrintDivider();
+
+        for (var i = 0; i < response.Matches.Count; i++)
+        {
+            var match = response.Matches[i];
+            Console.WriteLine($"{i + 1}.  {match.EmployeeName,-20} (Score: {match.MatchScore}%)");
+            Console.WriteLine($"    Matched Skill: {match.SkillName}");
+            if (!string.IsNullOrWhiteSpace(match.Reason))
+            {
+                Console.WriteLine($"    Explanation  : {match.Reason}");
+            }
+            Console.WriteLine();
+        }
+
+        ConsoleHelper.PrintDivider();
+        ConsoleHelper.PrintSuccess("AI-matched resources retrieved. Actual resource allocation is held per pending requirements.");
+        Console.WriteLine("\nPress any key to go back...");
+        Console.ReadKey(intercept: true);
     }
 }

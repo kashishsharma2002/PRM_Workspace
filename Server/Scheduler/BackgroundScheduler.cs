@@ -46,6 +46,10 @@ public class BackgroundScheduler(IServiceProvider serviceProvider, ILogger<Backg
                     (completedAt - startedAt).TotalMilliseconds);
 
                 var intervalHours = await GetSchedulerIntervalHoursAsync(configRepo, stoppingToken);
+                logger.LogInformation(
+                    "Scheduler next run in {IntervalHours} hour(s) ({ConfigKey} from system config).",
+                    intervalHours,
+                    ConfigKeys.SchedulerIntervalHours);
                 await Task.Delay(TimeSpan.FromHours(intervalHours), stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

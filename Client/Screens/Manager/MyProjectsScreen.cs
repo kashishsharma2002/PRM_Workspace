@@ -1,5 +1,6 @@
 using Client.Helpers;
 using Client.HttpClients;
+using Client.Models.Ai;
 
 namespace Client.Screens.Manager;
 
@@ -100,9 +101,39 @@ public static class MyProjectsScreen
         Console.Write("[A] Get AI Risk Summary  [B] Back — choice: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
         if (choice == "A")
-            Console.WriteLine("AI Risk Summary is available in Phase 8.");
+        {
+            Console.WriteLine("\nGenerating AI summary...");
+            var url = $"/api/ai/projects/{projectId}/risk-summary";
+            try
+            {
+                var response = await client.GetAsync<AiRiskSummaryResponse>(url, requireAuth: true);
+                if (response is not null)
+                {
+                    ConsoleHelper.PrintDivider();
+                    Console.WriteLine($"-- AI Risk Summary --");
+                    Console.WriteLine(response.Summary);
+                    
+                    if (response.Recommendations.Count > 0)
+                    {
+                        Console.WriteLine("\nRecommendations:");
+                        foreach (var rec in response.Recommendations)
+                        {
+                            Console.WriteLine($"  - {rec}");
+                        }
+                    }
+                }
+                else
+                {
+                    ConsoleHelper.PrintError("Failed to retrieve AI risk summary.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ErrorDisplayHelper.HandleException(ex);
+            }
+        }
 
-        Console.WriteLine("Press any key to go back...");
+        Console.WriteLine("\nPress any key to go back...");
         Console.ReadKey(intercept: true);
     }
 

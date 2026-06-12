@@ -12,7 +12,6 @@ using Server.Models.DTOs.Scheduler;
 using Server.Models.Entities;
 using Server.Scheduler;
 using Server.Services.Shared;
-using Server.Services.SystemConfig;
 
 namespace Server.Services.Projects;
 
@@ -25,7 +24,6 @@ public class ProjectService(
     IEmployeeRepository employeeRepository,
     ITimesheetRepository timesheetRepository,
     ISystemConfigRepository systemConfigRepository,
-    IHealthThresholdProvider healthThresholdProvider,
     IAuditService auditService,
     ILogger<ProjectService> logger) : IProjectService
 {
@@ -351,7 +349,6 @@ public class ProjectService(
         var milestonesByProject = milestones.GroupBy(m => m.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
 
         var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
-        var thresholds = await healthThresholdProvider.GetThresholdsAsync(cancellationToken);
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeek, weekEnd, cancellationToken);
         var allocationsByProject = allocations.GroupBy(a => a.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
         var loggedHoursByProject = await timesheetRepository.GetLoggedHoursByProjectForWeekAsync(lastWeek, cancellationToken);
@@ -374,8 +371,8 @@ public class ProjectService(
                     expectedHours,
                     loggedHours,
                     today,
-                    thresholds.LowHoursThreshold,
-                    thresholds.ApproachingDeadlineDays);
+                    HealthThresholdDefaults.LowHoursRatio,
+                    HealthThresholdDefaults.ApproachingDeadlineDays);
                 var healthStatus = HealthFlagEvaluator.MapToHealthStatus(flags);
 
                 await projectRepository.UpdateHealthStatusAsync(project.Id, healthStatus, cancellationToken);
@@ -403,14 +400,13 @@ public class ProjectService(
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var thresholds = await healthThresholdProvider.GetThresholdsAsync(cancellationToken);
         var flags = new List<string>();
 
         if (milestones.Any(m => m.IsOverdue))
             flags.Add(ProjectConstants.FlagOverdueMilestone);
 
         var daysUntilEnd = endDate.DayNumber - today.DayNumber;
-        if (daysUntilEnd < thresholds.ApproachingDeadlineDays
+        if (daysUntilEnd < HealthThresholdDefaults.ApproachingDeadlineDays
             && milestones.Any(m => m.MilestoneStatus != MilestoneStatusConstants.Done))
         {
             flags.Add(ProjectConstants.FlagApproachingDeadline);
@@ -434,7 +430,7 @@ public class ProjectService(
                 .Sum(li => li.HoursLogged);
 
             var expectedHours = allocation.AllocationPercentage / 100m * maxWeeklyHours;
-            if (projectHours < expectedHours * thresholds.LowHoursThreshold)
+            if (projectHours < expectedHours * HealthThresholdDefaults.LowHoursRatio)
                 flags.Add(ProjectConstants.FlagLowHours);
         }
 

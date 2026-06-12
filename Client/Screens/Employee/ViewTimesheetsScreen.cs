@@ -20,12 +20,12 @@ public static class ViewTimesheetsScreen
                 return;
             }
 
-            Console.WriteLine($"{"Week Start",-14}{"Total Hrs",-12}{"Status"}");
+            Console.WriteLine($"{"ID",-8}{"Week Start",-14}{"Total Hrs",-12}{"Status"}");
             ConsoleHelper.PrintDivider();
             foreach (var item in timesheets)
             {
                 var statusDisplay = item.Status == "MISSED" ? $"{item.Status} !" : item.Status;
-                Console.WriteLine($"{DateInputHelper.FormatDisplay(item.WeekStartDate),-14}{item.TotalHours,5:0.#} hrs    {statusDisplay}");
+                Console.WriteLine($"{item.Id,-8}{DateInputHelper.FormatDisplay(item.WeekStartDate),-14}{item.TotalHours,5:0.#} hrs    {statusDisplay}");
             }
 
             ConsoleHelper.PrintDivider();

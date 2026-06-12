@@ -22,4 +22,8 @@ public static class ErrorCodes
     public const string Conflict = "CONFLICT";
     public const string NotFound = "NOT_FOUND";
     public const string UnexpectedError = "UNEXPECTED_ERROR";
+
+    public const string LlmNotConfigured = "LLM_NOT_CONFIGURED";
+    public const string LlmRequestFailed = "LLM_REQUEST_FAILED";
+    public const string LlmResponseInvalid = "LLM_RESPONSE_INVALID";
 }

@@ -19,37 +19,8 @@ public static class DatabaseSeeder
     {
         await SeedRolesAsync(context, cancellationToken);
         await SeedAdminAsync(context, cancellationToken);
-        await SeedHealthThresholdConfigAsync(context, cancellationToken);
         await SeedSampleUsersAsync(context, cancellationToken);
         await SeedSampleProjectsAsync(context, cancellationToken);
-    }
-
-    private static async Task SeedHealthThresholdConfigAsync(PrmDbContext context, CancellationToken cancellationToken)
-    {
-        var now = DateTime.UtcNow;
-        var entries = new (string Key, string Value, string Description)[]
-        {
-            (ConfigKeys.HealthLowHoursThreshold, HealthThresholdDefaults.LowHoursRatio.ToString("0.##"),
-                "Ratio of expected hours below which LOW_HOURS flag is raised (0.01 to 1)"),
-            (ConfigKeys.HealthApproachingDeadlineDays, HealthThresholdDefaults.ApproachingDeadlineDays.ToString(),
-                "Days before project end date to flag APPROACHING_DEADLINE")
-        };
-
-        foreach (var (key, value, description) in entries)
-        {
-            if (await context.SystemConfigurations.AnyAsync(c => c.ConfigKey == key, cancellationToken))
-                continue;
-
-            context.SystemConfigurations.Add(new SystemConfiguration
-            {
-                ConfigKey = key,
-                ConfigValue = value,
-                Description = description,
-                UpdatedAt = now
-            });
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task SeedRolesAsync(PrmDbContext context, CancellationToken cancellationToken)

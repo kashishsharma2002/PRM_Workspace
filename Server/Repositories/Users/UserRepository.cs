@@ -6,8 +6,13 @@ namespace Server.Repositories.Users;
 
 public class UserRepository(PrmDbContext context) : IUserRepository
 {
-    public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default) =>
-        context.Users.FirstOrDefaultAsync(u => u.Username == username, cancellationToken);
+    public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default)
+    {
+        var normalized = username.Trim();
+        return context.Users.FirstOrDefaultAsync(
+            u => u.Username.ToLower() == normalized.ToLower(),
+            cancellationToken);
+    }
 
     public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
         context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
@@ -43,7 +48,10 @@ public class UserRepository(PrmDbContext context) : IUserRepository
 
     public Task UpdateAsync(User user, CancellationToken cancellationToken = default)
     {
-        context.Users.Update(user);
+        var entry = context.Entry(user);
+        if (entry.State == EntityState.Detached)
+            context.Users.Update(user);
+
         return Task.CompletedTask;
     }
 

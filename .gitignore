@@ -7,6 +7,7 @@
 [Oo]bj/
 [Dd]ebug/
 [Rr]elease/
+.build-out/
 publish/
 artifacts/
 _build_out/

@@ -27,13 +27,22 @@ public static class ResetPasswordScreen
             }
 
             Console.WriteLine($"User found: {user.FullName} ({user.Role})");
+            Console.WriteLine("Password rules: min 8 chars, 1 uppercase letter, 1 number.");
             Console.WriteLine();
             Console.Write("New Temporary Password: ");
-            var newPassword = ReadPassword();
+            var newPassword = ReadPassword().Trim();
 
             if (string.IsNullOrWhiteSpace(newPassword))
             {
                 ConsoleHelper.PrintError("Password is required.");
+                return;
+            }
+
+            Console.Write("Confirm New Password: ");
+            var confirmPassword = ReadPassword().Trim();
+            if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            {
+                ConsoleHelper.PrintError("Passwords do not match.");
                 return;
             }
 

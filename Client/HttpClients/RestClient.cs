@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Client.Helpers;
 using Client.Models;
 
@@ -7,6 +8,8 @@ namespace Client.HttpClients;
 
 public class RestClient
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly HttpClient _http;
     private readonly string _baseUrl;
 
@@ -38,7 +41,7 @@ public class RestClient
         if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
             throw new SessionExpiredException("Session expired. Please log in again.");
 
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}{endpoint}", payload);
+        var response = await _http.PostAsJsonAsync($"{_baseUrl}{endpoint}", payload, JsonOptions);
         return await HandleResponse<T>(response);
     }
 
@@ -47,7 +50,7 @@ public class RestClient
         if (requireAuth && string.IsNullOrWhiteSpace(SessionStore.Token))
             throw new SessionExpiredException("Session expired. Please log in again.");
 
-        var response = await _http.PutAsJsonAsync($"{_baseUrl}{endpoint}", payload);
+        var response = await _http.PutAsJsonAsync($"{_baseUrl}{endpoint}", payload, JsonOptions);
         return await HandleResponse<T>(response);
     }
 
@@ -64,7 +67,7 @@ public class RestClient
     {
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            var unauthorizedEnvelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>();
+            var unauthorizedEnvelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
             var message = unauthorizedEnvelope?.Error ?? "Invalid username or password.";
 
             if (!string.IsNullOrWhiteSpace(SessionStore.Token))
@@ -76,7 +79,7 @@ public class RestClient
             throw new ApiClientException(message, unauthorizedEnvelope?.ErrorCode, (int)response.StatusCode);
         }
 
-        var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>();
+        var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
         if (envelope is null)
             throw new ApiClientException("Empty response from server.", null, (int)response.StatusCode);
 

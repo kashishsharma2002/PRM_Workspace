@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Tests.Helpers;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Server.Common;
 using Server.Data;
 using Server.Exceptions;
+using Server.Models.DTOs.Auth;
 using Server.Models.DTOs.Users;
+using Server.Services.Auth;
 
 namespace Tests;
 
@@ -98,6 +102,41 @@ public class UserServiceOperationsTests : IDisposable
         Assert.NotNull(user);
         Assert.True(user!.IsTemporaryPassword);
         Assert.True(BCrypt.Net.BCrypt.Verify("NewPass99", user.PasswordHash));
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ThenLogin_SucceedsWithNewPassword()
+    {
+        var userId = await CreateTestUserAsync("reset.login.user");
+        const string newPassword = "ResetPass9";
+
+        await _userService.ResetPasswordAsync(1, userId, new ResetPasswordRequestDto
+        {
+            NewTemporaryPassword = newPassword
+        });
+
+        var userRepo = new UserRepository(_context);
+        var roleRepo = TestServiceFactory.CreateRoleRepository(_context);
+        var authService = new AuthService(
+            userRepo,
+            roleRepo,
+            new JwtTokenService(Options.Create(new JwtSettings
+            {
+                SecretKey = "TestSecretKeyForJwtTokenService1234567890",
+                Issuer = "PRM.Test",
+                Audience = "PRM.Test",
+                ExpiryHours = 8
+            })),
+            TestServiceFactory.CreateLogger<AuthService>());
+
+        var loginResult = await authService.LoginAsync(new LoginRequestDto
+        {
+            Username = "reset.login.user",
+            Password = newPassword
+        });
+
+        Assert.Equal(userId, loginResult.UserId);
+        Assert.True(loginResult.ForcePasswordChange);
     }
 
     [Fact]

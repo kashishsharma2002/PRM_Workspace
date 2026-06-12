@@ -49,7 +49,6 @@ public class ProjectServiceTests : IDisposable
             new EmployeeRepository(_context),
             new TimesheetRepository(_context),
             new SystemConfigRepository(_context),
-            TestServiceFactory.CreateHealthThresholdProvider(_context),
             auditService,
             TestServiceFactory.CreateLogger<ProjectService>());
     }

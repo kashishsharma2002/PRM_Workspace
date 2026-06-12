@@ -431,33 +431,6 @@ namespace Server.Migrations
                     b.ToTable("RESOURCE_PROFILES", (string)null);
                 });
 
-            modelBuilder.Entity("Server.Models.Entities.UserSkill", b =>
-                {
-                    b.Property<long>("UserId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("user_id");
-
-                    b.Property<long>("SkillId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("skill_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("ProficiencyLevel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasColumnName("proficiency_level");
-
-                    b.HasKey("UserId", "SkillId");
-
-                    b.HasIndex("SkillId");
-
-                    b.ToTable("USER_SKILLS", (string)null);
-                });
-
             modelBuilder.Entity("Server.Models.Entities.Role", b =>
                 {
                     b.Property<long>("Id")
@@ -847,6 +820,33 @@ namespace Server.Migrations
                     b.ToTable("USER_ROLES", (string)null);
                 });
 
+            modelBuilder.Entity("Server.Models.Entities.UserSkill", b =>
+                {
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("user_id");
+
+                    b.Property<long>("SkillId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("skill_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ProficiencyLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("proficiency_level");
+
+                    b.HasKey("UserId", "SkillId");
+
+                    b.HasIndex("SkillId");
+
+                    b.ToTable("USER_SKILLS", (string)null);
+                });
+
             modelBuilder.Entity("Server.Models.Entities.AiRequestLog", b =>
                 {
                     b.HasOne("Server.Models.Entities.User", null)
@@ -910,21 +910,6 @@ namespace Server.Migrations
                         .WithMany()
                         .HasForeignKey("ManagerId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Server.Models.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Server.Models.Entities.UserSkill", b =>
-                {
-                    b.HasOne("Server.Models.Entities.Skill", null)
-                        .WithMany()
-                        .HasForeignKey("SkillId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Server.Models.Entities.User", null)
                         .WithMany()
@@ -1005,6 +990,21 @@ namespace Server.Migrations
                     b.HasOne("Server.Models.Entities.Role", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Server.Models.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Server.Models.Entities.UserSkill", b =>
+                {
+                    b.HasOne("Server.Models.Entities.Skill", null)
+                        .WithMany()
+                        .HasForeignKey("SkillId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 

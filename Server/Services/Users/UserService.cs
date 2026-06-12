@@ -142,13 +142,15 @@ public class UserService(
         CancellationToken cancellationToken = default)
     {
         var user = await GetUserOrThrowAsync(userId, cancellationToken);
-        var now = DateTime.UtcNow;
+        var newPassword = request.NewTemporaryPassword.Trim();
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewTemporaryPassword);
+        if (!PasswordValidator.IsValid(newPassword, out var passwordError))
+            throw new ValidationAppException(passwordError);
+
+        var now = DateTime.UtcNow;
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
         user.IsTemporaryPassword = true;
         user.UpdatedAt = now;
-
-        await userRepository.UpdateAsync(user, cancellationToken);
 
         await auditService.LogUpdateAsync(
             actorUserId,

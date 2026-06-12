@@ -1,4 +1,4 @@
-﻿using Client.Helpers;
+using Client.Helpers;
 using Client.HttpClients;
 
 namespace Client.Screens.Manager;
@@ -16,7 +16,7 @@ public static class ManagerMenuScreen
             Console.WriteLine("2. Allocate Resource");
             Console.WriteLine("3. My Projects");
             Console.WriteLine("4. Timesheets");
-            Console.WriteLine("5. AI Assistant (Phase 8)");
+            Console.WriteLine("5. AI Assistant");
             Console.WriteLine("0. Logout");
             ConsoleHelper.PrintDivider();
             Console.Write("Enter option: ");
@@ -33,7 +33,7 @@ public static class ManagerMenuScreen
                         await AllocateResourceScreen.RunAsync(client);
                         break;
                     case "5":
-                        Console.WriteLine("AI Assistant will be available in Phase 8.");
+                        await AiAssistantScreen.RunAsync(client);
                         break;
                     case "3":
                         await MyProjectsScreen.RunAsync(client);
