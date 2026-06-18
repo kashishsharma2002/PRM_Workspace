@@ -136,6 +136,7 @@ public partial class EmployeeService
             FullName = user.FullName,
             Department = user.Department,
             EmploymentStatus = profile.ResourceStatus,
+            IsTimesheetFrozen = profile.IsTimesheetFrozen,
             TotalUtilizationPercentage = totalUtilization,
             Skills = skillDtos,
             ActiveAllocations = allocationDtos,

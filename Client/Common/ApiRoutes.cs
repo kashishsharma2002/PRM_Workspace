@@ -25,6 +25,8 @@ public static class ApiRoutes
     public static string EmployeeSkill(long employeeId, long skillId) => $"/api/employees/{employeeId}/skills/{skillId}";
     public const string EmployeesMyTeam = "/api/employees/my-team";
     public static string EmployeeTeamMember(long employeeId) => $"/api/employees/my-team/{employeeId}";
+    public static string EmployeeRestoreTimesheetAccess(long employeeId) =>
+        $"/api/employees/my-team/{employeeId}/restore-timesheet-access";
 
     public const string Projects = "/api/projects";
     public const string ProjectsMy = "/api/projects/my";

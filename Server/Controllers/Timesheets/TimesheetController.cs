@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Server.Common;
 using Server.Common.Roles;
 using Server.Models.DTOs.Timesheets;
+using Server.Repositories.Employees;
 
 namespace Server.Controllers.Timesheets;
 
@@ -58,15 +59,19 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
 
     [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("reminder")]
-    public async Task<ActionResult<ApiResponse<TimesheetReminderResponseDto>>> GetMissedReminder(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<TimesheetReminderResponseDto>>> GetMissedReminder(
+        [FromServices] IEmployeeRepository employeeRepository,
+        CancellationToken cancellationToken)
     {
         var employeeId = GetEmployeeId();
         var showReminder = await timesheetService.HasMissedTimesheetReminderAsync(employeeId, cancellationToken);
         var weekStart = WeekDateHelper.GetMostRecentCompletedWeekMonday();
+        var profile = await employeeRepository.GetByIdAsync(employeeId, cancellationToken);
         return Ok(ApiResponse<TimesheetReminderResponseDto>.Ok(new TimesheetReminderResponseDto
         {
             ShowReminder = showReminder,
-            WeekStartDate = weekStart
+            WeekStartDate = weekStart,
+            IsTimesheetFrozen = profile?.IsTimesheetFrozen ?? false
         }, "Reminder status retrieved."));
     }
 

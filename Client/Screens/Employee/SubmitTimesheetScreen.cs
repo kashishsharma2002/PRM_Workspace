@@ -9,6 +9,14 @@ public static class SubmitTimesheetScreen
     {
         try
         {
+            var reminder = await clients.Employee.GetReminderAsync();
+            if (reminder?.IsTimesheetFrozen == true)
+            {
+                ConsoleHelper.PrintError(
+                    "Timesheet submission is not available. Your access is frozen — contact your manager to restore it.");
+                return;
+            }
+
             ConsoleHelper.PrintHeader("Submit Timesheet");
             if (defaultWeekStart is not null)
             {

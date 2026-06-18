@@ -14,4 +14,5 @@ public interface IEmployeeService
     Task AssignManagerAsync(long employeeId, AssignManagerRequestDto request, CancellationToken cancellationToken = default);
     Task<TeamDashboardDto> GetTeamDashboardAsync(long managerUserId, CancellationToken cancellationToken = default);
     Task<TeamMemberDetailDto> GetTeamMemberDetailAsync(long managerUserId, long employeeId, CancellationToken cancellationToken = default);
+    Task RestoreTimesheetAccessAsync(long managerUserId, long employeeId, CancellationToken cancellationToken = default);
 }

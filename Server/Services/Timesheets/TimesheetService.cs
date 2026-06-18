@@ -37,6 +37,12 @@ public partial class TimesheetService(
         if (WeekDateHelper.IsFutureWeek(request.WeekStartDate))
             throw new ValidationAppException("Cannot submit a timesheet for a future week.");
 
+        var profile = await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
+            ?? throw new NotFoundAppException("Employee profile not found.");
+        if (profile.IsTimesheetFrozen)
+            throw new ForbiddenAppException(
+                "Your timesheet access is frozen. Contact your manager to restore submission privileges.");
+
         if (await timesheetRepository.HasSubmittedForWeekAsync(employeeId, request.WeekStartDate, cancellationToken))
             throw new ConflictAppException(
                 $"A timesheet for week {request.WeekStartDate:dd-MM-yyyy} has already been submitted.");

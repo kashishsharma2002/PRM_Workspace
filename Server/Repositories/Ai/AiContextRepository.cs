@@ -140,6 +140,7 @@ public class AiContextRepository(PrmDbContext context) : IAiContextRepository
                 .Where(a => profileIds.Contains(a.ResourceProfileId) && a.AllocationStatus == AllocationStatusConstants.Active)
                 .Join(context.Projects, a => a.ProjectId, p => p.Id, (a, p) => new
                 {
+                    a.ProjectId,
                     a.ResourceProfileId,
                     a.AllocationPercentage,
                     a.AllocationStartDate,
@@ -158,6 +159,7 @@ public class AiContextRepository(PrmDbContext context) : IAiContextRepository
             var empAllocations = profileId > 0 && allocationsByProfileId.TryGetValue(profileId, out var allocs)
                 ? allocs.Select(a => new AiAllocationContext
                 {
+                    ProjectId = a.ProjectId,
                     EmployeeName = emp.FullName,
                     AllocationPercentage = a.AllocationPercentage,
                     StartDate = a.AllocationStartDate.ToString("yyyy-MM-dd"),

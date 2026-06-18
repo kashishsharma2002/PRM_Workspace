@@ -1,4 +1,5 @@
 using Server.Common;
+using Server.Services.Compliance;
 using Server.Services.Employees;
 using Server.Services.Projects;
 using Server.Services.SystemConfig;
@@ -20,12 +21,14 @@ public class BackgroundScheduler(IServiceProvider serviceProvider, ILogger<Backg
             {
                 using var scope = serviceProvider.CreateScope();
                 var configRepo = scope.ServiceProvider.GetRequiredService<ISystemConfigRepository>();
-                var projectService = scope.ServiceProvider.GetRequiredService<IProjectService>();
+                var projectHealthService = scope.ServiceProvider.GetRequiredService<IProjectHealthService>();
+                var timesheetComplianceService = scope.ServiceProvider.GetRequiredService<ITimesheetComplianceService>();
                 var timesheetService = scope.ServiceProvider.GetRequiredService<ITimesheetService>();
                 var resourceStatusService = scope.ServiceProvider.GetRequiredService<IResourceStatusService>();
                 var jobLogRepo = scope.ServiceProvider.GetRequiredService<ISchedulerJobLogRepository>();
 
-                var healthResult = await projectService.EvaluateAllProjectsHealthAsync(stoppingToken);
+                var healthResult = await projectHealthService.ProcessProjectHealthNotificationsAsync(stoppingToken);
+                await timesheetComplianceService.ProcessTimesheetComplianceAsync(stoppingToken);
                 var missedCreated = await timesheetService.MarkMissedTimesheetsAsync(stoppingToken);
                 var statusesUpdated = await resourceStatusService.ReconcileAllResourceStatusesAsync(stoppingToken);
                 var completedAt = DateTime.UtcNow;

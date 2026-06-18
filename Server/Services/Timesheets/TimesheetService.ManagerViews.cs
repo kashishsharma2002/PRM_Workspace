@@ -22,7 +22,8 @@ public partial class TimesheetService
             return new TeamTimesheetListResponseDto
             {
                 WeekStartDate = resolvedWeek,
-                Rows = []
+                Rows = [],
+                FrozenEmployees = []
             };
         }
 
@@ -31,6 +32,16 @@ public partial class TimesheetService
         var employeeNameLookup = team.ToDictionary(
             e => e.Id,
             e => users.TryGetValue(e.UserId, out var user) ? user.FullName : "Unknown");
+
+        var frozenEmployees = team
+            .Where(e => e.IsTimesheetFrozen)
+            .Select(e => new FrozenTeamMemberDto
+            {
+                EmployeeId = e.Id,
+                EmployeeName = employeeNameLookup.GetValueOrDefault(e.Id, "Unknown")
+            })
+            .OrderBy(e => e.EmployeeName)
+            .ToList();
 
         var allocations = await allocationRepository.GetActiveByEmployeeIdsForWeekAsync(
             employeeIds, resolvedWeek, weekEnd, cancellationToken);
@@ -96,7 +107,8 @@ public partial class TimesheetService
         return new TeamTimesheetListResponseDto
         {
             WeekStartDate = resolvedWeek,
-            Rows = rows
+            Rows = rows,
+            FrozenEmployees = frozenEmployees
         };
     }
 

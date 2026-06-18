@@ -25,6 +25,8 @@ public class PrmDbContext(DbContextOptions<PrmDbContext> options) : DbContext(op
     public DbSet<AiRequestLog> AiRequestLogs => Set<AiRequestLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SchedulerJobLog> SchedulerJobLogs => Set<SchedulerJobLog>();
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
+    public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

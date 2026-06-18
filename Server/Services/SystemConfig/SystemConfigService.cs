@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Server.AI.Configuration;
 using Server.Common;
 using Server.Common.Audit;
+using Server.Common.Emails;
 using Server.Common.Timesheets;
 using Server.Exceptions;
 using Server.Models.DTOs.SystemConfig;
@@ -34,7 +35,10 @@ public class SystemConfigService(
                 SchedulerDefaults.IntervalHours),
             MaxWeeklyHours = ParseIntOrDefault(
                 dict.GetValueOrDefault(ConfigKeys.MaxWeeklyHours),
-                (int)TimesheetDefaults.DefaultMaxWeeklyHours)
+                (int)TimesheetDefaults.DefaultMaxWeeklyHours),
+            TimesheetDeadlineWorkingDaysAfterWeekEnd = ParseIntOrDefault(
+                dict.GetValueOrDefault(ConfigKeys.TimesheetDeadlineDay),
+                EmailDefaults.TimesheetDeadlineWorkingDaysAfterWeekEnd)
         };
     }
 
@@ -62,6 +66,15 @@ public class SystemConfigService(
 
         if (request.MaxWeeklyHours.HasValue)
             await UpdateKeyAsync(ConfigKeys.MaxWeeklyHours, request.MaxWeeklyHours.Value.ToString(), actorUserId, now, updatedKeys, cancellationToken);
+
+        if (request.TimesheetDeadlineWorkingDaysAfterWeekEnd.HasValue)
+            await UpdateKeyAsync(
+                ConfigKeys.TimesheetDeadlineDay,
+                request.TimesheetDeadlineWorkingDaysAfterWeekEnd.Value.ToString(),
+                actorUserId,
+                now,
+                updatedKeys,
+                cancellationToken);
 
         if (updatedKeys.Count == 0)
             throw new ValidationAppException("At least one setting must be provided.");

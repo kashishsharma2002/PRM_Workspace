@@ -26,6 +26,7 @@ public class AiMilestoneContext
 
 public class AiAllocationContext
 {
+    public long ProjectId { get; set; }
     public string EmployeeName { get; set; } = string.Empty;
     public decimal AllocationPercentage { get; set; }
     public string StartDate { get; set; } = string.Empty;

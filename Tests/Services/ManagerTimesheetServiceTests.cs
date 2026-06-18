@@ -159,6 +159,36 @@ public class ManagerTimesheetServiceTests
     }
 
     [Fact]
+    public async Task GetTeamTimesheetsAsync_ReturnsFrozenEmployees()
+    {
+        var team = new List<ResourceProfile>
+        {
+            new() { Id = _employeeAProfileId, UserId = 101, ManagerId = _managerAUserId, IsTimesheetFrozen = true },
+            new() { Id = 11, UserId = 102, ManagerId = _managerAUserId, IsTimesheetFrozen = false }
+        };
+        var users = new Dictionary<long, User>
+        {
+            { 101, new User { Id = 101, FullName = _employeeAFullName } },
+            { 102, new User { Id = 102, FullName = "Employee B" } }
+        };
+
+        _employeeRepoMock.Setup(r => r.GetByManagerIdAsync(_managerAUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(team);
+        _userRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(users);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdsForWeekAsync(It.IsAny<IEnumerable<long>>(), _weekStart, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _timesheetRepoMock.Setup(r => r.GetByEmployeeIdsAndWeekAsync(It.IsAny<IEnumerable<long>>(), _weekStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await _timesheetService.GetTeamTimesheetsAsync(_managerAUserId, _weekStart);
+
+        Assert.Single(result.FrozenEmployees);
+        Assert.Equal(_employeeAProfileId, result.FrozenEmployees[0].EmployeeId);
+        Assert.Equal(_employeeAFullName, result.FrozenEmployees[0].EmployeeName);
+    }
+
+    [Fact]
     public async Task GetTimesheetForManagerAsync_OtherTeam_ThrowsNotFound()
     {
         // Arrange

@@ -47,6 +47,7 @@ public class SkillMatchRanker(ILogger<SkillMatchRanker> logger)
             if (finalScore >= MinimumMatchThreshold)
             {
                 match.MatchScore = (int)Math.Round(finalScore);
+                match.RemainingCapacityPercentage = candidate.RemainingCapacityPercentage;
                 rankedMatches.Add(match);
             }
             else

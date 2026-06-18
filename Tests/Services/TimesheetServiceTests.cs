@@ -83,6 +83,9 @@ public class TimesheetServiceTests
 
     private void SetupDefaultConfigAndAllocation(decimal allocationPercentage = 50, string maxWeeklyHours = "40")
     {
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = _userId, IsTimesheetFrozen = false });
+
         _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = maxWeeklyHours });
 
@@ -135,6 +138,22 @@ public class TimesheetServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ConflictAppException>(
+            () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
+    }
+
+    [Fact]
+    public async Task SubmitTimesheetAsync_FrozenAccount_ThrowsForbidden()
+    {
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = _userId, IsTimesheetFrozen = true });
+
+        var request = new TimesheetSubmitRequestDto
+        {
+            WeekStartDate = _weekStart,
+            LineItems = [new() { ProjectId = _projectId, HoursLogged = 10 }]
+        };
+
+        await Assert.ThrowsAsync<ForbiddenAppException>(
             () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
     }
 

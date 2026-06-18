@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Server.AI.Abstractions;
 using Server.AI.Configuration;
@@ -25,8 +26,10 @@ public class AiIntegrationService(
     ITeamBuilderResponseNormalizer teamBuilderResponseNormalizer,
     SkillMatchCandidateFilter skillMatchCandidateFilter,
     SkillMatchRanker skillMatchRanker,
+    ProjectHealthResourceFilter projectHealthResourceFilter,
     ILogger<AiIntegrationService> logger) : IAiIntegrationService
 {
+    private static readonly JsonSerializerOptions SkillMatchJsonOptions = new() { WriteIndented = true };
     public async Task<AiRiskSummaryResponseDto> GetRiskSummaryAsync(
         long managerUserId,
         long projectId,
@@ -53,6 +56,7 @@ public class AiIntegrationService(
         long managerUserId,
         long projectId,
         string? requirement,
+        SkillMatchOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         logger.LogDebug(
@@ -62,15 +66,39 @@ public class AiIntegrationService(
         ValidateRequirement(requirement);
         await EnsureManagerOwnsProjectAsync(managerUserId, projectId, cancellationToken);
 
-        var (context, jsonContext) = await contextBuilder.BuildSkillMatchContextAsync(projectId, cancellationToken);
-        var filteredCandidates = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
+        var (context, _) = await contextBuilder.BuildSkillMatchContextAsync(projectId, cancellationToken);
 
-        var prompt = AiPromptBuilder.BuildSkillMatchPrompt(projectId, requirement, jsonContext);
+        List<AiSkillMatchCandidateContext> candidatePool;
+        string jsonContext;
+        string prompt;
+
+        if (options?.ExcludeAllocatedToProjectId is long excludeProjectId)
+        {
+            candidatePool = projectHealthResourceFilter.FilterForAtRiskEmail(context.Candidates, excludeProjectId);
+            if (candidatePool.Count == 0)
+            {
+                return new AiSkillMatchResponseDto { ProjectId = projectId, Matches = [] };
+            }
+
+            var filteredContext = new AiSkillMatchContextModel
+            {
+                Project = context.Project,
+                Candidates = candidatePool
+            };
+            jsonContext = JsonSerializer.Serialize(filteredContext, SkillMatchJsonOptions);
+            prompt = AiPromptBuilder.BuildAtRiskSkillMatchPrompt(projectId, requirement, jsonContext);
+        }
+        else
+        {
+            candidatePool = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
+            jsonContext = JsonSerializer.Serialize(context, SkillMatchJsonOptions);
+            prompt = AiPromptBuilder.BuildSkillMatchPrompt(projectId, requirement, jsonContext);
+        }
 
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseSkillMatch(responseText, projectId);
 
-        result = skillMatchRanker.RankAndFilterMatches(result, filteredCandidates, requirement);
+        result = skillMatchRanker.RankAndFilterMatches(result, candidatePool, requirement);
 
         await LogRequestAsync(AiRequestTypeConstants.SkillMatch, prompt,
             $"Generated {result.Matches.Count} matches (filtered and ranked).",

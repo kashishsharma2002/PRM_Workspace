@@ -58,7 +58,8 @@ public class AiInsightsController(
             return BadRequest(ApiResponse<object>.Fail("Validation failed.", ErrorCodes.ValidationFailed, validation.Errors.Select(e => e.ErrorMessage).ToList()));
 
         var managerUserId = GetActorUserId();
-        var result = await aiIntegrationService.GetSkillMatchAsync(managerUserId, projectId, requirement, cancellationToken);
+        var result = await aiIntegrationService.GetSkillMatchAsync(
+            managerUserId, projectId, requirement, cancellationToken: cancellationToken);
         return Ok(ApiResponse<AiSkillMatchResponseDto>.Ok(result, "Skill match generated."));
     }
 

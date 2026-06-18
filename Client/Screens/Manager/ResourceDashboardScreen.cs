@@ -91,6 +91,8 @@ public static class ResourceDashboardScreen
         Console.WriteLine($"── {detail.FullName} ─────────────────────────────────");
         Console.WriteLine($"Department     : {detail.Department ?? "-"}");
         Console.WriteLine($"Current Status : {detail.EmploymentStatus} (Employee/Resource) ({detail.TotalUtilizationPercentage:0.#}%)");
+        if (detail.IsTimesheetFrozen)
+            Console.WriteLine("Timesheet Access: FROZEN");
         Console.WriteLine($"Profile Skills : {string.Join(", ", detail.Skills.Select(s => s.SkillName))}");
         Console.WriteLine();
         Console.WriteLine("Active Allocations:");
@@ -111,8 +113,37 @@ public static class ResourceDashboardScreen
         }
 
         ConsoleHelper.PrintDivider();
+        if (detail.IsTimesheetFrozen)
+        {
+            Console.Write("[R] Restore timesheet access     ");
+        }
+
         Console.WriteLine("Press any key to go back...");
-        Console.ReadKey(intercept: true);
-        Console.WriteLine();
+        if (detail.IsTimesheetFrozen)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.KeyChar is 'r' or 'R')
+            {
+                Console.WriteLine();
+                try
+                {
+                    await clients.Manager.RestoreTimesheetAccessAsync(employeeId);
+                    ConsoleHelper.PrintSuccess("Timesheet access restored.");
+                }
+                catch (Exception ex)
+                {
+                    ErrorDisplayHelper.HandleException(ex);
+                }
+            }
+            else
+            {
+                Console.WriteLine();
+            }
+        }
+        else
+        {
+            Console.ReadKey(intercept: true);
+            Console.WriteLine();
+        }
     }
 }

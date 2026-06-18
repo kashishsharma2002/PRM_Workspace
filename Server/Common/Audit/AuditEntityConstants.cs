@@ -8,4 +8,5 @@ public static class AuditEntityConstants
     public const string ProjectAllocations = "PROJECT_ALLOCATIONS";
     public const string Timesheets = "TIMESHEETS";
     public const string SystemConfigurations = "SYSTEM_CONFIGURATIONS";
+    public const string ResourceProfiles = "RESOURCE_PROFILES";
 }

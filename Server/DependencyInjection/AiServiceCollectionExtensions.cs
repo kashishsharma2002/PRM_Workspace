@@ -23,6 +23,7 @@ public static class AiServiceCollectionExtensions
         services.AddScoped<ITeamBuilderResponseNormalizer, TeamBuilderResponseNormalizer>();
         services.AddScoped<SkillMatchCandidateFilter>();
         services.AddScoped<SkillMatchRanker>();
+        services.AddScoped<ProjectHealthResourceFilter>();
         services.AddScoped<IAiIntegrationService, AiIntegrationService>();
         services.AddScoped<ILlmClient, GeminiClient>();
         services.AddScoped<ILlmClient, GroqClient>();

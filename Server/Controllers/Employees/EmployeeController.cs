@@ -120,6 +120,17 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         return Ok(ApiResponse<object>.Ok(new { }, "Manager assigned."));
     }
 
+    [Authorize(Roles = RoleConstants.Manager)]
+    [HttpPut("my-team/{id:long}/restore-timesheet-access")]
+    public async Task<ActionResult<ApiResponse<object>>> RestoreTimesheetAccess(
+        long id,
+        CancellationToken cancellationToken)
+    {
+        var managerUserId = GetActorUserId();
+        await employeeService.RestoreTimesheetAccessAsync(managerUserId, id, cancellationToken);
+        return Ok(ApiResponse<object>.Ok(new { }, "Timesheet access restored."));
+    }
+
     private long GetActorUserId()
     {
         var userIdClaim = User.FindFirstValue(JwtRegisteredClaimNames.Sub);

@@ -182,4 +182,35 @@ public class SkillMatchRankerTests
 
         Assert.Empty(ranked.Matches);
     }
+
+    [Fact]
+    public void RankAndFilterMatches_CopiesRemainingCapacityPercentage()
+    {
+        var candidatePool = new List<AiSkillMatchCandidateContext>
+        {
+            new()
+            {
+                FullName = "Alice",
+                RemainingCapacityPercentage = 75,
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "React", ProficiencyLevel = "ADVANCED" }
+                }
+            }
+        };
+
+        var response = new AiSkillMatchResponseDto
+        {
+            ProjectId = 1,
+            Matches = new List<AiSkillMatchItemDto>
+            {
+                new() { EmployeeName = "Alice", SkillName = "React", MatchScore = 85 }
+            }
+        };
+
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool);
+
+        Assert.Single(ranked.Matches);
+        Assert.Equal(75, ranked.Matches[0].RemainingCapacityPercentage);
+    }
 }
