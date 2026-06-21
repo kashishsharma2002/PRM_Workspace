@@ -5,20 +5,19 @@ namespace Client.Screens.Admin;
 
 public static class ResetPasswordScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Reset User Password");
-
-        Console.Write("Enter Username or User ID: ");
-        var input = Console.ReadLine()?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(input))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Username or User ID is required.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Reset User Password");
 
-        try
-        {
+            Console.Write("Enter Username or User ID: ");
+            var input = Console.ReadLine()?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                ConsoleHelper.PrintError("Username or User ID is required.");
+                return;
+            }
+
             var user = await UserLookupHelper.ResolveUserAsync(clients, input);
             if (user is null)
             {
@@ -47,9 +46,7 @@ public static class ResetPasswordScreen
             }
 
             ConsoleHelper.PrintDivider();
-            Console.Write("[S] Save  [B] Back — choice: ");
-            var action = Console.ReadLine()?.Trim().ToUpperInvariant();
-            if (action != "S")
+            if (!FormInputHelper.ConfirmSave())
                 return;
 
             await clients.Admin.ResetPasswordAsync(
@@ -58,17 +55,7 @@ public static class ResetPasswordScreen
 
             ConsoleHelper.PrintSuccess(
                 "Password reset. User will be prompted to change it on next login.");
-        }
-        catch (SessionExpiredException ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 
     private static string ReadPassword()
     {

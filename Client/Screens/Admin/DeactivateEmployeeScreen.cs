@@ -5,25 +5,21 @@ namespace Client.Screens.Admin;
 
 public static class DeactivateEmployeeScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Deactivate Employee/Resource");
-
-        Console.Write("Enter Employee/Resource ID: ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Invalid employee/resource ID.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Deactivate Employee/Resource");
 
-        try
-        {
-            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
-            if (detail is null)
+            Console.Write("Enter Employee/Resource ID: ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
             {
-                ConsoleHelper.PrintError("Employee/Resource not found.");
+                ConsoleHelper.PrintError("Invalid employee/resource ID.");
                 return;
             }
+
+            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
+            if (!ApiLoadHelper.RequireLoaded(detail, "Employee/Resource not found."))
+                return;
 
             if (!detail.IsActive)
             {
@@ -52,20 +48,10 @@ public static class DeactivateEmployeeScreen
             Console.WriteLine("This will: set is_active = false, end all active allocations today,");
             Console.WriteLine("and block their login account.");
             Console.WriteLine();
-            Console.Write("[Y] Yes, Deactivate  [B] Back — choice: ");
-            if (Console.ReadLine()?.Trim().ToUpperInvariant() != "Y")
+            if (!FormInputHelper.ConfirmDeactivate())
                 return;
 
             await clients.Admin.DeactivateEmployeeAsync(employeeId);
             ConsoleHelper.PrintSuccess("Employee/Resource deactivated.");
-        }
-        catch (SessionExpiredException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 }

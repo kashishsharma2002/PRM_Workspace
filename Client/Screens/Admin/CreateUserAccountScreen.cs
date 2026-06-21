@@ -6,74 +6,65 @@ namespace Client.Screens.Admin;
 
 public static class CreateUserAccountScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Create User Account");
-
-        var fullName = FormInputHelper.PromptRequired("Full Name");
-        var email = FormInputHelper.PromptEmail();
-        var username = FormInputHelper.PromptRequired("Username");
-        var password = FormInputHelper.PromptPassword("Temporary Password");
-
-        Console.WriteLine("Role              : (1) Admin  (2) Manager  (3) Employee/Resource");
-        Console.Write("Select role [1-3]: ");
-        var roleChoice = Console.ReadLine()?.Trim();
-        var role = roleChoice switch
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            "1" => RoleConstants.Admin,
-            "2" => RoleConstants.Manager,
-            "3" => RoleConstants.Employee,
-            _ => string.Empty
-        };
+            ConsoleHelper.PrintHeader("Create User Account");
 
-        string? department = null;
-        string? designation = null;
+            var fullName = FormInputHelper.PromptRequired("Full Name");
+            var email = FormInputHelper.PromptEmail();
+            var username = FormInputHelper.PromptRequired("Username");
+            var password = FormInputHelper.PromptPassword("Temporary Password");
 
-        if (role == RoleConstants.Admin)
-        {
-            department = DepartmentConstants.HrOps;
-            designation = DesignationConstants.SystemAdministrator;
-            Console.WriteLine($"Department        : {DepartmentConstants.GetDisplayName(department)} (default for Admin)");
-            Console.WriteLine($"Designation       : {DesignationConstants.GetDisplayName(designation)} (default for Admin)");
-        }
-        else if (role == RoleConstants.Manager)
-        {
-            department = OptionPickerHelper.PickFromList(
-                "Department        :", DepartmentConstants.ManagerOptions, DepartmentConstants.GetDisplayName);
-            designation = OptionPickerHelper.PickFromList(
-                "Designation       :", DesignationConstants.ManagerOptions, DesignationConstants.GetDisplayName);
-        }
-        else if (role == RoleConstants.Employee)
-        {
-            department = OptionPickerHelper.PickFromList(
-                "Department        :", DepartmentConstants.EmployeeOptions, DepartmentConstants.GetDisplayName);
-            designation = OptionPickerHelper.PickFromList(
-                "Designation       :", DesignationConstants.EmployeeOptions, DesignationConstants.GetDisplayName);
-        }
+            Console.WriteLine("Role              : (1) Admin  (2) Manager  (3) Employee/Resource");
+            Console.Write("Select role [1-3]: ");
+            var roleChoice = Console.ReadLine()?.Trim();
+            var role = RoleDisplayHelper.ResolveSystemRoleChoice(roleChoice);
 
-        if (string.IsNullOrWhiteSpace(role))
-        {
-            ConsoleHelper.PrintError("Role is required.");
-            return;
-        }
+            string? department = null;
+            string? designation = null;
 
-        if (role is RoleConstants.Manager or RoleConstants.Employee)
-        {
-            if (string.IsNullOrWhiteSpace(department) || string.IsNullOrWhiteSpace(designation))
+            if (role == RoleConstants.Admin)
             {
-                ConsoleHelper.PrintError("Department and designation must be selected from the list.");
+                department = DepartmentConstants.HrOps;
+                designation = DesignationConstants.SystemAdministrator;
+                Console.WriteLine($"Department        : {DepartmentConstants.GetDisplayName(department)} (default for Admin)");
+                Console.WriteLine($"Designation       : {DesignationConstants.GetDisplayName(designation)} (default for Admin)");
+            }
+            else if (role == RoleConstants.Manager)
+            {
+                department = OptionPickerHelper.PickFromList(
+                    "Department        :", DepartmentConstants.ManagerOptions, DepartmentConstants.GetDisplayName);
+                designation = OptionPickerHelper.PickFromList(
+                    "Designation       :", DesignationConstants.ManagerOptions, DesignationConstants.GetDisplayName);
+            }
+            else if (role == RoleConstants.Employee)
+            {
+                department = OptionPickerHelper.PickFromList(
+                    "Department        :", DepartmentConstants.EmployeeOptions, DepartmentConstants.GetDisplayName);
+                designation = OptionPickerHelper.PickFromList(
+                    "Designation       :", DesignationConstants.EmployeeOptions, DesignationConstants.GetDisplayName);
+            }
+
+            if (string.IsNullOrWhiteSpace(role))
+            {
+                ConsoleHelper.PrintError("Role is required.");
                 return;
             }
-        }
 
-        ConsoleHelper.PrintDivider();
-        Console.Write("[S] Save  [B] Back — choice: ");
-        var action = Console.ReadLine()?.Trim().ToUpperInvariant();
-        if (action != "S")
-            return;
+            if (role is RoleConstants.Manager or RoleConstants.Employee)
+            {
+                if (string.IsNullOrWhiteSpace(department) || string.IsNullOrWhiteSpace(designation))
+                {
+                    ConsoleHelper.PrintError("Department and designation must be selected from the list.");
+                    return;
+                }
+            }
 
-        try
-        {
+            ConsoleHelper.PrintDivider();
+            if (!FormInputHelper.ConfirmSave())
+                return;
+
             var result = await clients.Admin.CreateUserAsync(new CreateUserRequest
             {
                 FullName = fullName,
@@ -94,15 +85,5 @@ public static class CreateUserAccountScreen
                     $"Account created (User ID: {result.UserId}). {profileNote} " +
                     "User must change password on first login.");
             }
-        }
-        catch (SessionExpiredException ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 }

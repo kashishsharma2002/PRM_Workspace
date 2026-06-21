@@ -1,12 +1,37 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Server.Common;
 using Server.Models.DTOs.Ai.Context;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class SkillMatchCandidateFilter(ILogger<SkillMatchCandidateFilter> logger)
+public class SkillMatchCandidateFilter(ILogger<SkillMatchCandidateFilter> logger) : ISkillMatchCandidateFilter
 {
     private const int MaxCandidatePoolSize = 30;
+
+    private static readonly Dictionary<string, string[]> KeywordToSkillCategories =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["devops"] = [EmployeeConstants.DevOpsCategory],
+            ["devsecops"] = [EmployeeConstants.DevOpsCategory],
+            ["sre"] = [EmployeeConstants.DevOpsCategory],
+            ["docker"] = [EmployeeConstants.DevOpsCategory],
+            ["kubernetes"] = [EmployeeConstants.DevOpsCategory],
+            ["k8s"] = [EmployeeConstants.DevOpsCategory],
+            ["java"] = [EmployeeConstants.BackendCategory],
+            ["python"] = [EmployeeConstants.BackendCategory],
+            ["spring"] = [EmployeeConstants.BackendCategory],
+            ["dotnet"] = [EmployeeConstants.BackendCategory],
+            ["react"] = [EmployeeConstants.FrontendCategory],
+            ["angular"] = [EmployeeConstants.FrontendCategory],
+            ["vue"] = [EmployeeConstants.FrontendCategory],
+            ["frontend"] = [EmployeeConstants.FrontendCategory],
+            ["backend"] = [EmployeeConstants.BackendCategory],
+            ["qa"] = [EmployeeConstants.QaCategory],
+            ["testing"] = [EmployeeConstants.QaCategory],
+            ["selenium"] = [EmployeeConstants.QaCategory],
+        };
 
     public List<AiSkillMatchCandidateContext> FilterByCandidateSkills(
         string? requirement,
@@ -25,10 +50,10 @@ public class SkillMatchCandidateFilter(ILogger<SkillMatchCandidateFilter> logger
 
         if (filtered.Count == 0)
         {
-            logger.LogWarning(
-                "No candidates matched requirement keywords: {Keywords}. Returning full pool.",
+            logger.LogDebug(
+                "No candidates matched requirement keywords: {Keywords}.",
                 string.Join(", ", keywords));
-            return candidates;
+            return [];
         }
 
         if (filtered.Count > MaxCandidatePoolSize)
@@ -46,36 +71,103 @@ public class SkillMatchCandidateFilter(ILogger<SkillMatchCandidateFilter> logger
         return filtered;
     }
 
-    private List<string> ExtractKeywords(string requirement)
+    public List<string> ExtractKeywords(string requirement)
     {
-        var words = Regex.Split(requirement.ToLowerInvariant(), @"\s+")
-            .Where(w => w.Length > 2 && !IsCommonWord(w))
-            .Distinct()
+        var normalized = requirement.ToLowerInvariant();
+        var words = Regex.Split(normalized, @"[\s,.;:()]+")
+            .Select(w => w.Trim())
+            .Where(w => w.Length >= 2 && !IsCommonWord(w))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        if (normalized.Contains("devops", StringComparison.Ordinal) && !words.Contains("devops"))
+            words.Add("devops");
+        if (normalized.Contains("c#", StringComparison.Ordinal) && !words.Contains("c#"))
+            words.Add("c#");
+        if (normalized.Contains(".net", StringComparison.Ordinal) && !words.Contains(".net"))
+            words.Add(".net");
 
         return words;
     }
 
-    private bool HasRelevantSkills(AiSkillMatchCandidateContext candidate, List<string> keywords)
+    public bool HasRelevantSkills(AiSkillMatchCandidateContext candidate, List<string> keywords)
     {
+        if (keywords.Count == 0)
+            return true;
+
+        if (MatchesProfileText(candidate.Designation, keywords) || MatchesProfileText(candidate.Department, keywords))
+            return true;
+
         if (candidate.Skills == null || candidate.Skills.Count == 0)
             return false;
 
         var skillNamesCombined = string.Join(" ", candidate.Skills.Select(s => s.SkillName)).ToLowerInvariant();
 
-        return keywords.Any(keyword =>
-            skillNamesCombined.Contains(keyword) ||
-            IsPartialMatch(skillNamesCombined, keyword));
+        foreach (var keyword in keywords)
+        {
+            if (skillNamesCombined.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                IsPartialMatch(skillNamesCombined, keyword))
+            {
+                return true;
+            }
+
+            if (KeywordToSkillCategories.TryGetValue(keyword, out var categories) &&
+                candidate.Skills.Any(s => categories.Contains(s.Category, StringComparer.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private bool IsPartialMatch(string source, string keyword)
+    public string? ResolvePrimaryMatchingSkill(AiSkillMatchCandidateContext candidate, List<string> keywords)
     {
-        return source.Split(' ').Any(word => word.StartsWith(keyword, StringComparison.OrdinalIgnoreCase));
+        if (candidate.Skills == null || candidate.Skills.Count == 0)
+            return null;
+
+        foreach (var keyword in keywords)
+        {
+            var direct = candidate.Skills.FirstOrDefault(s =>
+                s.SkillName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                keyword.Contains(s.SkillName, StringComparison.OrdinalIgnoreCase));
+            if (direct is not null)
+                return direct.SkillName;
+
+            if (KeywordToSkillCategories.TryGetValue(keyword, out var categories))
+            {
+                var categorySkill = candidate.Skills.FirstOrDefault(s =>
+                    categories.Contains(s.Category, StringComparer.OrdinalIgnoreCase));
+                if (categorySkill is not null)
+                    return categorySkill.SkillName;
+            }
+        }
+
+        return candidate.Skills[0].SkillName;
     }
 
-    private bool IsCommonWord(string word)
+    private static bool MatchesProfileText(string? value, List<string> keywords)
     {
-        var common = new[] { "the", "and", "for", "with", "from", "your", "this", "that" };
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Replace('_', ' ').ToLowerInvariant();
+        return keywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsPartialMatch(string source, string keyword)
+    {
+        return source.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Any(word => word.StartsWith(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsCommonWord(string word)
+    {
+        var common = new[]
+        {
+            "the", "and", "for", "with", "from", "your", "this", "that",
+            "need", "want", "looking", "engineer", "developer", "resource", "senior", "junior", "team"
+        };
         return common.Contains(word, StringComparer.OrdinalIgnoreCase);
     }
 }

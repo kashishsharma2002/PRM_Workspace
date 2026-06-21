@@ -1,6 +1,9 @@
+using Server.Models.DTOs.Scheduler;
+
 namespace Server.Services.Compliance;
 
 public interface ITimesheetComplianceService
 {
-    Task ProcessTimesheetComplianceAsync(CancellationToken cancellationToken = default);
+    Task<SchedulerComplianceResultDto> ProcessTimesheetComplianceAsync(
+        CancellationToken cancellationToken = default);
 }

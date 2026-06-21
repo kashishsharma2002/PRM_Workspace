@@ -9,6 +9,7 @@ using Server.Exceptions;
 using Server.Models.DTOs.Projects;
 using Server.Models.Entities;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 
 namespace Server.Services.Projects;
 
@@ -20,7 +21,7 @@ public partial class ProjectService(
     IAllocationRepository allocationRepository,
     IEmployeeRepository employeeRepository,
     ITimesheetRepository timesheetRepository,
-    ISystemConfigRepository systemConfigRepository,
+    ISystemConfigService systemConfigService,
     IAuditService auditService,
     ILogger<ProjectService> logger) : IProjectService
 {

@@ -11,8 +11,8 @@ using Server.Repositories.Employees;
 using Server.Repositories.Allocations;
 using Server.Repositories.Projects;
 using Server.Repositories.Timesheets;
-using Server.Repositories.SystemConfig;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 using Server.Services.Timesheets;
 using System;
 using System.Collections.Generic;
@@ -32,7 +32,7 @@ public class TimesheetReminderTests
     private readonly Mock<IEmployeeRepository> _employeeRepoMock;
     private readonly Mock<IUserRepository> _userRepoMock;
     private readonly Mock<IActivityTagRepository> _activityTagRepoMock;
-    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IAuditService> _auditServiceMock;
     private readonly TimesheetService _timesheetService;
 
@@ -56,8 +56,9 @@ public class TimesheetReminderTests
         _employeeRepoMock = new Mock<IEmployeeRepository>();
         _userRepoMock = new Mock<IUserRepository>();
         _activityTagRepoMock = new Mock<IActivityTagRepository>();
-        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _auditServiceMock = new Mock<IAuditService>();
+        var schedulerTimesheetServiceMock = new Mock<ISchedulerTimesheetService>();
 
         _timesheetService = new TimesheetService(
             _transactionManagerMock.Object,
@@ -67,8 +68,9 @@ public class TimesheetReminderTests
             _employeeRepoMock.Object,
             _userRepoMock.Object,
             _activityTagRepoMock.Object,
-            _systemConfigRepoMock.Object,
+            _systemConfigServiceMock.Object,
             _auditServiceMock.Object,
+            schedulerTimesheetServiceMock.Object,
             new MemoryCache(new MemoryCacheOptions()),
             new Mock<ILogger<TimesheetService>>().Object);
     }

@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Ai;
@@ -7,62 +8,51 @@ namespace Client.Screens.Manager;
 
 public static class MyProjectsScreen
 {
-    public static async Task RunAsync(AppClients clients)
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(() => RunCoreAsync(clients));
+
+    private static async Task RunCoreAsync(AppClients clients)
     {
-        try
+        ConsoleHelper.PrintHeader("My Projects");
+        var response = await clients.Manager.GetMyProjectsAsync();
+        if (response is null || response.Projects.Count == 0)
         {
-            ConsoleHelper.PrintHeader("My Projects");
-            var response = await clients.Manager.GetMyProjectsAsync();
-            if (response is null || response.Projects.Count == 0)
-            {
-                Console.WriteLine("No projects found.");
-                ConsoleHelper.PrintDivider();
-                Console.WriteLine("Press any key to go back...");
-                Console.ReadKey(intercept: true);
-                return;
-            }
-
-            for (var i = 0; i < response.Projects.Count; i++)
-            {
-                var project = response.Projects[i];
-                Console.WriteLine(
-                    $"{i + 1,2}.  {project.ProjectName,-18}" +
-                    $"{DateInputHelper.FormatDisplay(project.EndDate),-12}" +
-                    $"{ConsoleHelper.MapHealthLabel(project.HealthStatus)}");
-            }
-
+            Console.WriteLine("No projects found.");
             ConsoleHelper.PrintDivider();
-            Console.Write("Select project number (0 to go back): ");
-            if (!int.TryParse(Console.ReadLine()?.Trim(), out var selection) || selection == 0)
-                return;
+            Console.WriteLine("Press any key to go back...");
+            Console.ReadKey(intercept: true);
+            return;
+        }
 
-            if (selection < 1 || selection > response.Projects.Count)
-            {
-                ConsoleHelper.PrintError("Invalid selection.");
-                return;
-            }
+        for (var i = 0; i < response.Projects.Count; i++)
+        {
+            var project = response.Projects[i];
+            Console.WriteLine(
+                $"{i + 1,2}.  {project.ProjectName,-18}" +
+                $"{DateInputHelper.FormatDisplay(project.EndDate),-12}" +
+                $"{ConsoleHelper.MapHealthLabel(project.HealthStatus)}");
+        }
 
-            var selected = response.Projects[selection - 1];
-            await ShowProjectDetailAsync(clients, selected.Id);
-        }
-        catch (SessionExpiredException)
+        ConsoleHelper.PrintDivider();
+        Console.Write("Select project number (0 to go back): ");
+        if (!int.TryParse(Console.ReadLine()?.Trim(), out var selection) || selection == 0)
+            return;
+
+        if (selection < 1 || selection > response.Projects.Count)
         {
-            throw;
+            ConsoleHelper.PrintError("Invalid selection.");
+            return;
         }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
+
+        var selected = response.Projects[selection - 1];
+        await ShowProjectDetailAsync(clients, selected.Id);
     }
 
     private static async Task ShowProjectDetailAsync(AppClients clients, long projectId)
     {
         var detail = await clients.Manager.GetProjectDetailAsync(projectId);
-        if (detail is null)
-        {
-            ConsoleHelper.PrintError("Failed to load project detail.");
+        if (!ApiLoadHelper.RequireLoaded(detail, "Failed to load project detail."))
             return;
-        }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"-- {detail.ProjectName} --");
@@ -101,10 +91,13 @@ public static class MyProjectsScreen
         ConsoleHelper.PrintDivider();
         Console.Write("[A] Get AI Risk Summary  [B] Back — choice: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+        if (choice == MenuChoices.Back)
+            return;
+
         if (choice == "A")
         {
             Console.WriteLine("\nGenerating AI summary...");
-            try
+            await ScreenRunner.RunSafeAsync(async () =>
             {
                 var response = await clients.Ai.GetProjectRiskSummaryAsync(projectId);
                 if (response is not null)
@@ -112,7 +105,7 @@ public static class MyProjectsScreen
                     ConsoleHelper.PrintDivider();
                     Console.WriteLine($"-- AI Risk Summary --");
                     Console.WriteLine(response.Summary);
-                    
+
                     if (response.Recommendations.Count > 0)
                     {
                         Console.WriteLine("\nRecommendations:");
@@ -126,15 +119,11 @@ public static class MyProjectsScreen
                 {
                     ConsoleHelper.PrintError("Failed to retrieve AI risk summary.");
                 }
-            }
-            catch (Exception ex)
-            {
-                ErrorDisplayHelper.HandleException(ex);
-            }
-        }
+            });
 
-        Console.WriteLine("\nPress any key to go back...");
-        Console.ReadKey(intercept: true);
+            Console.WriteLine("\nPress any key to continue...");
+            Console.ReadKey(intercept: true);
+        }
     }
 
     private static string FormatRiskFlag(string flag, ManagerProjectDetail detail) =>

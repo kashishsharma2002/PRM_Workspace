@@ -24,9 +24,10 @@ public class AiIntegrationService(
     IAiContextBuilder contextBuilder,
     IAiResponseParser responseParser,
     ITeamBuilderResponseNormalizer teamBuilderResponseNormalizer,
-    SkillMatchCandidateFilter skillMatchCandidateFilter,
-    SkillMatchRanker skillMatchRanker,
-    ProjectHealthResourceFilter projectHealthResourceFilter,
+    IAiPromptBuilder aiPromptBuilder,
+    ISkillMatchCandidateFilter skillMatchCandidateFilter,
+    ISkillMatchRanker skillMatchRanker,
+    IProjectHealthResourceFilter projectHealthResourceFilter,
     ILogger<AiIntegrationService> logger) : IAiIntegrationService
 {
     private static readonly JsonSerializerOptions SkillMatchJsonOptions = new() { WriteIndented = true };
@@ -40,13 +41,15 @@ public class AiIntegrationService(
         await EnsureManagerOwnsProjectAsync(managerUserId, projectId, cancellationToken);
 
         var (_, jsonContext) = await contextBuilder.BuildRiskContextAsync(projectId, cancellationToken);
-        var prompt = AiPromptBuilder.BuildRiskSummaryPrompt(projectId, jsonContext);
+        var prompt = aiPromptBuilder.BuildRiskSummaryPrompt(projectId, jsonContext);
 
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseRiskSummary(responseText, projectId);
 
         await LogRequestAsync(AiRequestTypeConstants.RiskSummary, prompt,
-            result.Summary.Length > 1000 ? result.Summary[..1000] : result.Summary,
+            result.Summary.Length > AiValidationLimits.MaxResponseSummaryLength
+                ? result.Summary[..AiValidationLimits.MaxResponseSummaryLength]
+                : result.Summary,
             managerUserId, cancellationToken);
 
         return result;
@@ -86,19 +89,24 @@ public class AiIntegrationService(
                 Candidates = candidatePool
             };
             jsonContext = JsonSerializer.Serialize(filteredContext, SkillMatchJsonOptions);
-            prompt = AiPromptBuilder.BuildAtRiskSkillMatchPrompt(projectId, requirement, jsonContext);
+            prompt = aiPromptBuilder.BuildAtRiskSkillMatchPrompt(projectId, requirement, jsonContext);
         }
         else
         {
             candidatePool = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
-            jsonContext = JsonSerializer.Serialize(context, SkillMatchJsonOptions);
-            prompt = AiPromptBuilder.BuildSkillMatchPrompt(projectId, requirement, jsonContext);
+            var filteredContext = new AiSkillMatchContextModel
+            {
+                Project = context.Project,
+                Candidates = candidatePool
+            };
+            jsonContext = JsonSerializer.Serialize(filteredContext, SkillMatchJsonOptions);
+            prompt = aiPromptBuilder.BuildSkillMatchPrompt(projectId, requirement, jsonContext);
         }
 
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseSkillMatch(responseText, projectId);
 
-        result = skillMatchRanker.RankAndFilterMatches(result, candidatePool, requirement);
+        result = skillMatchRanker.RankAndFilterMatches(result, context.Candidates, requirement);
 
         await LogRequestAsync(AiRequestTypeConstants.SkillMatch, prompt,
             $"Generated {result.Matches.Count} matches (filtered and ranked).",
@@ -118,15 +126,20 @@ public class AiIntegrationService(
 
         ValidateRequirement(requirement);
 
-        var (context, jsonContext) = await contextBuilder.BuildOrganizationalSkillMatchContextAsync(cancellationToken);
+        var (context, _) = await contextBuilder.BuildOrganizationalSkillMatchContextAsync(cancellationToken);
         var filteredCandidates = skillMatchCandidateFilter.FilterByCandidateSkills(requirement, context.Candidates);
+        var filteredContext = new AiOrganizationalSkillMatchContextModel
+        {
+            Candidates = filteredCandidates
+        };
+        var filteredJsonContext = JsonSerializer.Serialize(filteredContext, SkillMatchJsonOptions);
 
-        var prompt = AiPromptBuilder.BuildOrganizationalSkillMatchPrompt(requirement, jsonContext);
+        var prompt = aiPromptBuilder.BuildOrganizationalSkillMatchPrompt(requirement, filteredJsonContext);
         
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         var result = responseParser.ParseSkillMatch(responseText, projectId: 0);
 
-        result = skillMatchRanker.RankAndFilterMatches(result, filteredCandidates, requirement);
+        result = skillMatchRanker.RankAndFilterMatches(result, context.Candidates, requirement);
 
         await LogRequestAsync(AiRequestTypeConstants.SkillMatch, prompt,
             $"Generated {result.Matches.Count} organizational matches (filtered and ranked).",
@@ -148,7 +161,7 @@ public class AiIntegrationService(
         ApplyAssignablePool(rawContext);
 
         var jsonContext = contextBuilder.SerializeTeamBuilderContext(rawContext);
-        var prompt = AiPromptBuilder.BuildTeamBuilderPrompt(requirement!, jsonContext);
+        var prompt = aiPromptBuilder.BuildTeamBuilderPrompt(requirement!, jsonContext);
 
         var responseText = await GenerateCompletionAsync(prompt, cancellationToken);
         TeamBuilderResponseDto parsed;
@@ -159,7 +172,7 @@ public class AiIntegrationService(
         catch (ValidationAppException ex) when (ex.ErrorCode == ErrorCodes.LlmResponseInvalid)
         {
             logger.LogWarning("Team builder initial parse failed for manager {ManagerUserId}, retrying with repair prompt", managerUserId);
-            var repairPrompt = AiPromptBuilder.BuildTeamBuilderRepairPrompt(requirement!, responseText);
+            var repairPrompt = aiPromptBuilder.BuildTeamBuilderRepairPrompt(requirement!, responseText);
             responseText = await GenerateCompletionAsync(repairPrompt, cancellationToken);
             parsed = responseParser.ParseTeamBuilder(responseText);
         }

@@ -16,6 +16,8 @@ public partial class ProjectService
         return new MilestoneListResponseDto
         {
             ProjectName = project.ProjectName,
+            StartDate = project.StartDate,
+            EndDate = project.EndDate,
             Milestones = milestones.Select(m => new MilestoneListItemDto
             {
                 Id = m.Id,

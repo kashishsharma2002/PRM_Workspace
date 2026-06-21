@@ -5,16 +5,12 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllProjectsScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        try
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
             var list = await clients.Admin.GetProjectsAsync();
-            if (list is null)
-            {
-                ConsoleHelper.PrintError("Failed to load projects.");
+            if (!ApiLoadHelper.RequireLoaded(list, "Failed to load projects."))
                 return;
-            }
 
             ConsoleHelper.PrintHeader("All Projects");
             Console.WriteLine($"{"ID",-6}{"Name",-16}{"Manager",-14}{"End Date",-12}{"Status",-10}{"Health",-8}{"SP Done/Total"}");
@@ -31,8 +27,5 @@ public static class ViewAllProjectsScreen
             Console.WriteLine("Press any key to return...");
             Console.ReadKey(intercept: true);
             Console.WriteLine();
-        }
-        catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
-    }
+        });
 }

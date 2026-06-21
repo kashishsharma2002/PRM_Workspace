@@ -8,12 +8,12 @@ using Server.Models.Entities;
 using Server.Repositories.Allocations;
 using Server.Repositories.Emails;
 using Server.Repositories.Projects;
-using Server.Repositories.SystemConfig;
 using Server.Repositories.Timesheets;
 using Server.Repositories.Users;
 using Server.Services.Ai.Abstractions;
 using Server.Services.Emails;
 using Server.Services.Projects;
+using Server.Services.SystemConfig;
 
 namespace Tests.Services;
 
@@ -23,7 +23,7 @@ public class ProjectHealthServiceTests
     private readonly Mock<IMilestoneRepository> _milestoneRepoMock = new();
     private readonly Mock<IAllocationRepository> _allocationRepoMock = new();
     private readonly Mock<ITimesheetRepository> _timesheetRepoMock = new();
-    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock = new();
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock = new();
     private readonly Mock<IUserRepository> _userRepoMock = new();
     private readonly Mock<IEmailLogRepository> _emailLogRepoMock = new();
     private readonly Mock<IEmailService> _emailServiceMock = new();
@@ -38,7 +38,7 @@ public class ProjectHealthServiceTests
             _milestoneRepoMock.Object,
             _allocationRepoMock.Object,
             _timesheetRepoMock.Object,
-            _systemConfigRepoMock.Object,
+            _systemConfigServiceMock.Object,
             _userRepoMock.Object,
             _emailLogRepoMock.Object,
             _emailServiceMock.Object,
@@ -71,8 +71,8 @@ public class ProjectHealthServiceTests
             .ReturnsAsync([project]);
         _milestoneRepoMock.Setup(r => r.GetByProjectIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([overdueMilestone]);
-        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SystemConfiguration { ConfigKey = ConfigKeys.MaxWeeklyHours, ConfigValue = "40" });
+        _systemConfigServiceMock.Setup(r => r.GetMaxWeeklyHoursAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(40m);
         _allocationRepoMock.Setup(r => r.GetAllActiveForWeekAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [

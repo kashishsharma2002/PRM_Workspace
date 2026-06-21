@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Ai;
@@ -20,17 +21,17 @@ public static class AiAssistantScreen
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            await ScreenRunner.RunSafeAsync(async () =>
             {
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await RunSkillMatchAsync(clients);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await RunRiskSummaryAsync(clients);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await TeamBuilderScreen.RunAsync(clients);
                         break;
                     case "4":
@@ -39,15 +40,10 @@ public static class AiAssistantScreen
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
-            }
-            catch (SessionExpiredException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                ErrorDisplayHelper.HandleException(ex);
-            }
+            });
+
+            if (choice == "4")
+                return;
         }
     }
 
@@ -68,12 +64,12 @@ public static class AiAssistantScreen
         var response = await clients.Ai.GetOrganizationalSkillMatchAsync(requirement);
         if (response is null || response.Matches.Count == 0)
         {
-            ConsoleHelper.PrintError("No AI matches found or server error occurred.");
+            ConsoleHelper.PrintError("No skill matches found for this requirement.");
             return;
         }
 
         ConsoleHelper.PrintDivider();
-        Console.WriteLine("Results:");
+        Console.WriteLine("Skill Matches:");
         for (var i = 0; i < response.Matches.Count; i++)
         {
             var match = response.Matches[i];
@@ -85,8 +81,7 @@ public static class AiAssistantScreen
             Console.WriteLine();
         }
 
-        Console.WriteLine("  Note: These are AI-generated suggestions. Always verify availability");
-        Console.WriteLine("  and skills with the employee before allocating.");
+        Console.WriteLine("  Note: Results are based on verified employee skills.");
         ConsoleHelper.PrintDivider();
         Console.Write("[A] Go to Allocate Resource     [B] Back — choice: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
@@ -129,11 +124,8 @@ public static class AiAssistantScreen
         Console.WriteLine("\nGenerating AI summary...");
 
         var response = await clients.Ai.GetProjectRiskSummaryAsync(project.Id);
-        if (response is null)
-        {
-            ConsoleHelper.PrintError("Failed to load AI risk summary.");
+        if (!ApiLoadHelper.RequireLoaded(response, "Failed to load AI risk summary."))
             return;
-        }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"\"{response.Summary}\"");

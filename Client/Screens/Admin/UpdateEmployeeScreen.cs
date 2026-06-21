@@ -6,25 +6,21 @@ namespace Client.Screens.Admin;
 
 public static class UpdateEmployeeScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Update Employee/Resource");
-
-        Console.Write("Enter Employee/Resource ID: ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Invalid employee/resource ID.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Update Employee/Resource");
 
-        try
-        {
-            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
-            if (detail is null)
+            Console.Write("Enter Employee/Resource ID: ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
             {
-                ConsoleHelper.PrintError("Employee/Resource not found.");
+                ConsoleHelper.PrintError("Invalid employee/resource ID.");
                 return;
             }
+
+            var detail = await clients.Admin.GetEmployeeAsync(employeeId);
+            if (!ApiLoadHelper.RequireLoaded(detail, "Employee/Resource not found."))
+                return;
 
             Console.WriteLine($"Employee/Resource: {detail.FullName} ({detail.EmployeeCode})");
             Console.WriteLine($"Current Department : {FormatDepartment(detail.Department)}");
@@ -45,13 +41,12 @@ public static class UpdateEmployeeScreen
 
             if (department is null && designation is null)
             {
-                ConsoleHelper.PrintError("At least one field must be changed.");
+                ConsoleHelper.PrintSuccess("No changes made.");
                 return;
             }
 
             ConsoleHelper.PrintDivider();
-            Console.Write("[S] Save  [B] Back — choice: ");
-            if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
+            if (!FormInputHelper.ConfirmSave())
                 return;
 
             await clients.Admin.UpdateEmployeeAsync(
@@ -63,16 +58,7 @@ public static class UpdateEmployeeScreen
                 });
 
             ConsoleHelper.PrintSuccess("Employee/Resource updated.");
-        }
-        catch (SessionExpiredException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 
     private const string KeepCurrent = "__KEEP__";
 

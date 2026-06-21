@@ -32,7 +32,7 @@ public class ProjectHealthResourceFilterTests
             }
         };
 
-        var filtered = _filter.FilterForAtRiskEmail(candidates, projectId: 2);
+        var filtered = _filter.FilterForAtRiskEmail(candidates, excludeProjectId: 2);
 
         Assert.Single(filtered);
         Assert.Equal("Available Elsewhere", filtered[0].FullName);
@@ -60,7 +60,7 @@ public class ProjectHealthResourceFilterTests
             }
         };
 
-        var filtered = _filter.FilterForAtRiskEmail(candidates, projectId: 2);
+        var filtered = _filter.FilterForAtRiskEmail(candidates, excludeProjectId: 2);
 
         Assert.Single(filtered);
         Assert.Equal("Bench", filtered[0].FullName);
@@ -82,7 +82,7 @@ public class ProjectHealthResourceFilterTests
             }
         };
 
-        var filtered = _filter.FilterForAtRiskEmail(candidates, projectId: 2);
+        var filtered = _filter.FilterForAtRiskEmail(candidates, excludeProjectId: 2);
 
         Assert.Single(filtered);
         Assert.Equal(40, filtered[0].RemainingCapacityPercentage);
@@ -98,7 +98,7 @@ public class ProjectHealthResourceFilterTests
             new() { FullName = "Mid", RemainingCapacityPercentage = 60, ActiveAllocations = [] }
         };
 
-        var filtered = _filter.FilterForAtRiskEmail(candidates, projectId: 2);
+        var filtered = _filter.FilterForAtRiskEmail(candidates, excludeProjectId: 2);
 
         Assert.Equal(["High", "Mid", "Low"], filtered.Select(c => c.FullName).ToList());
     }

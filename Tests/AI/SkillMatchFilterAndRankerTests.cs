@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Server.Common;
 using Server.Models.DTOs.Ai;
 using Server.Models.DTOs.Ai.Context;
 using Server.Services.Ai;
@@ -47,7 +48,65 @@ public class SkillMatchCandidateFilterTests
     }
 
     [Fact]
-    public void FilterByCandidateSkills_NoMatches_ReturnsFullPool()
+    public void FilterByCandidateSkills_DevOpsRequirement_IncludesDevOpsCategorySkills()
+    {
+        var candidates = new List<AiSkillMatchCandidateContext>
+        {
+            new()
+            {
+                FullName = "Rohan Desai",
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Docker", Category = EmployeeConstants.DevOpsCategory, ProficiencyLevel = "INTERMEDIATE" },
+                    new() { SkillName = "SQL Server", Category = EmployeeConstants.BackendCategory, ProficiencyLevel = "INTERMEDIATE" }
+                }
+            },
+            new()
+            {
+                FullName = "Java Dev",
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Java", Category = EmployeeConstants.BackendCategory, ProficiencyLevel = "BEGINNER" }
+                }
+            }
+        };
+
+        var filtered = _filter.FilterByCandidateSkills("I need a devops engineer", candidates);
+
+        Assert.Single(filtered);
+        Assert.Equal("Rohan Desai", filtered[0].FullName);
+    }
+
+    [Fact]
+    public void FilterByCandidateSkills_MultiRoleRequirement_IncludesBothSkillPools()
+    {
+        var candidates = new List<AiSkillMatchCandidateContext>
+        {
+            new()
+            {
+                FullName = "Rohan Desai",
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Docker", Category = EmployeeConstants.DevOpsCategory, ProficiencyLevel = "INTERMEDIATE" }
+                }
+            },
+            new()
+            {
+                FullName = "Isha Verma",
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Java", Category = EmployeeConstants.BackendCategory, ProficiencyLevel = "BEGINNER" }
+                }
+            }
+        };
+
+        var filtered = _filter.FilterByCandidateSkills("I need a devops engineer and 1 java developer", candidates);
+
+        Assert.Equal(2, filtered.Count);
+    }
+
+    [Fact]
+    public void FilterByCandidateSkills_NoMatches_ReturnsEmpty()
     {
         var candidates = new List<AiSkillMatchCandidateContext>
         {
@@ -63,7 +122,7 @@ public class SkillMatchCandidateFilterTests
 
         var filtered = _filter.FilterByCandidateSkills("Python Database", candidates);
 
-        Assert.Single(filtered);
+        Assert.Empty(filtered);
     }
 
     [Fact]
@@ -89,7 +148,9 @@ public class SkillMatchRankerTests
     public SkillMatchRankerTests()
     {
         _logger = TestServiceFactory.CreateLogger<SkillMatchRanker>();
-        _ranker = new SkillMatchRanker(_logger);
+        var filterLogger = TestServiceFactory.CreateLogger<SkillMatchCandidateFilter>();
+        var filter = new SkillMatchCandidateFilter(filterLogger);
+        _ranker = new SkillMatchRanker(filter, _logger);
     }
 
     [Fact]
@@ -127,7 +188,7 @@ public class SkillMatchRankerTests
             }
         };
 
-        var ranked = _ranker.RankAndFilterMatches(response, candidatePool);
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "Python Developer");
 
         Assert.Equal("Alice", ranked.Matches[0].EmployeeName);
         Assert.Equal("Bob", ranked.Matches[1].EmployeeName);
@@ -151,7 +212,7 @@ public class SkillMatchRankerTests
             }
         };
 
-        var ranked = _ranker.RankAndFilterMatches(response, candidatePool);
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "Python Developer");
 
         Assert.Empty(ranked.Matches);
     }
@@ -178,7 +239,7 @@ public class SkillMatchRankerTests
             }
         };
 
-        var ranked = _ranker.RankAndFilterMatches(response, candidatePool);
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "Python Developer");
 
         Assert.Empty(ranked.Matches);
     }
@@ -208,9 +269,70 @@ public class SkillMatchRankerTests
             }
         };
 
-        var ranked = _ranker.RankAndFilterMatches(response, candidatePool);
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "React Developer");
 
         Assert.Single(ranked.Matches);
         Assert.Equal(75, ranked.Matches[0].RemainingCapacityPercentage);
+    }
+
+    [Fact]
+    public void RankAndFilterMatches_DevOpsCategorySkill_Accepted()
+    {
+        var candidatePool = new List<AiSkillMatchCandidateContext>
+        {
+            new()
+            {
+                FullName = "Rohan Desai",
+                RemainingCapacityPercentage = 100,
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Docker", Category = EmployeeConstants.DevOpsCategory, ProficiencyLevel = "INTERMEDIATE" }
+                }
+            }
+        };
+
+        var response = new AiSkillMatchResponseDto
+        {
+            ProjectId = 0,
+            Matches = new List<AiSkillMatchItemDto>
+            {
+                new() { EmployeeName = "Rohan Desai", SkillName = "Devops", MatchScore = 95, Reason = "Docker proficiency" }
+            }
+        };
+
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "I need a devops engineer");
+
+        Assert.Single(ranked.Matches);
+        Assert.Equal("Docker", ranked.Matches[0].SkillName);
+    }
+
+    [Fact]
+    public void RankAndFilterMatches_NonMatchingSkill_Filtered()
+    {
+        var candidatePool = new List<AiSkillMatchCandidateContext>
+        {
+            new()
+            {
+                FullName = "Alice",
+                RemainingCapacityPercentage = 100,
+                Skills = new List<AiSkillContext>
+                {
+                    new() { SkillName = "Java", ProficiencyLevel = "ADVANCED" }
+                }
+            }
+        };
+
+        var response = new AiSkillMatchResponseDto
+        {
+            ProjectId = 1,
+            Matches = new List<AiSkillMatchItemDto>
+            {
+                new() { EmployeeName = "Alice", SkillName = "DevOps", MatchScore = 95 }
+            }
+        };
+
+        var ranked = _ranker.RankAndFilterMatches(response, candidatePool, "DevOps Engineer");
+
+        Assert.Empty(ranked.Matches);
     }
 }

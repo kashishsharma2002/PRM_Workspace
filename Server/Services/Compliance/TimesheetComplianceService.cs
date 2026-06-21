@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Server.Common;
 using Server.Common.Audit;
 using Server.Common.Emails;
+using Server.Models.DTOs.Scheduler;
 using Server.Repositories.Allocations;
 using Server.Repositories.Emails;
 using Server.Repositories.Employees;
@@ -24,8 +25,9 @@ public class TimesheetComplianceService(
     IAuditService auditService,
     ILogger<TimesheetComplianceService> logger) : ITimesheetComplianceService
 {
-    public async Task ProcessTimesheetComplianceAsync(CancellationToken cancellationToken = default)
+    public async Task<SchedulerComplianceResultDto> ProcessTimesheetComplianceAsync(CancellationToken cancellationToken = default)
     {
+        var result = new SchedulerComplianceResultDto();
         var today = DateOnly.FromDateTime(DateTime.Today);
         var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday(today);
         var weekEnd = WeekDateHelper.GetWeekEnd(lastWeek);
@@ -36,12 +38,12 @@ public class TimesheetComplianceService(
         var schedule = TimesheetComplianceCalendar.Build(lastWeek, deadlineOffset);
         var emailType = ResolveEmailType(today, schedule);
         if (emailType is null)
-            return;
+            return result;
 
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeek, weekEnd, cancellationToken);
         var employeeIds = allocations.Select(a => a.ResourceProfileId).Distinct().ToList();
         if (employeeIds.Count == 0)
-            return;
+            return result;
 
         var nonCompliantIds = new List<long>();
         foreach (var employeeId in employeeIds)
@@ -72,8 +74,8 @@ public class TimesheetComplianceService(
             {
                 await FreezeEmployeeAsync(profile, user.FullName, cancellationToken);
                 await TrySendEmployeeEmailAsync(
-                    user.Email, emailType, placeholders, entityReference, employeeId, weekEndLabel, cancellationToken);
-                await NotifyManagerOfFreezeAsync(profile, user.FullName, weekEndLabel, entityReference, cancellationToken);
+                    user.Email, emailType, placeholders, entityReference, employeeId, weekEndLabel, result, cancellationToken);
+                await NotifyManagerOfFreezeAsync(profile, user.FullName, weekEndLabel, entityReference, result, cancellationToken);
                 continue;
             }
 
@@ -82,20 +84,25 @@ public class TimesheetComplianceService(
             if (alreadySent)
                 continue;
 
-            await emailService.SendNotificationAsync(
+            await TrackEmailSendAsync(
                 user.Email,
                 emailType,
                 placeholders,
                 entityReference,
                 $"compliance-{employeeId}-{weekEndLabel}-{emailType}",
+                result,
                 cancellationToken);
         }
 
         logger.LogInformation(
-            "Timesheet compliance processed. EmailType={EmailType}, NonCompliantCount={Count}, Schedule={Schedule}",
+            "Timesheet compliance processed. EmailType={EmailType}, NonCompliantCount={Count}, EmailsSent={EmailsSent}, EmailsFailed={EmailsFailed}, Schedule={Schedule}",
             emailType,
             nonCompliantIds.Count,
+            result.EmailsSent,
+            result.EmailsFailed,
             schedule);
+
+        return result;
     }
 
     private async Task TrySendEmployeeEmailAsync(
@@ -105,6 +112,7 @@ public class TimesheetComplianceService(
         string entityReference,
         long employeeId,
         string weekEndLabel,
+        SchedulerComplianceResultDto result,
         CancellationToken cancellationToken)
     {
         var alreadySent = await emailLogRepository.WasSentForReferenceAsync(
@@ -112,13 +120,37 @@ public class TimesheetComplianceService(
         if (alreadySent)
             return;
 
-        await emailService.SendNotificationAsync(
+        await TrackEmailSendAsync(
             email,
             emailType,
             placeholders,
             entityReference,
             $"compliance-{employeeId}-{weekEndLabel}-{emailType}",
+            result,
             cancellationToken);
+    }
+
+    private async Task TrackEmailSendAsync(
+        string recipient,
+        string emailType,
+        Dictionary<string, string> placeholders,
+        string entityReference,
+        string correlationId,
+        SchedulerComplianceResultDto result,
+        CancellationToken cancellationToken)
+    {
+        var sent = await emailService.SendNotificationAsync(
+            recipient,
+            emailType,
+            placeholders,
+            entityReference,
+            correlationId,
+            cancellationToken);
+
+        if (sent)
+            result.EmailsSent++;
+        else
+            result.EmailsFailed++;
     }
 
     private static string? ResolveEmailType(DateOnly today, TimesheetComplianceSchedule schedule)
@@ -156,6 +188,7 @@ public class TimesheetComplianceService(
         string employeeName,
         string weekEndLabel,
         string entityReference,
+        SchedulerComplianceResultDto result,
         CancellationToken cancellationToken)
     {
         if (profile.ManagerId is null)
@@ -181,12 +214,13 @@ public class TimesheetComplianceService(
             ["WeekEndDate"] = weekEndLabel
         };
 
-        await emailService.SendNotificationAsync(
+        await TrackEmailSendAsync(
             manager.Email,
             EmailTypeConstants.TimesheetFreezeManager,
             placeholders,
             managerEntityRef,
             $"compliance-mgr-{profile.Id}-{weekEndLabel}",
+            result,
             cancellationToken);
     }
 

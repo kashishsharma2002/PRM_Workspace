@@ -52,11 +52,13 @@ public class AiIntegrationServiceTests
         _responseParser = new AiResponseParser(NullLogger<AiResponseParser>.Instance);
         _responseNormalizer = new TeamBuilderResponseNormalizer();
         _candidateFilter = new SkillMatchCandidateFilter(NullLogger<SkillMatchCandidateFilter>.Instance);
-        _ranker = new SkillMatchRanker(NullLogger<SkillMatchRanker>.Instance);
+        _ranker = new SkillMatchRanker(_candidateFilter, NullLogger<SkillMatchRanker>.Instance);
         var projectHealthResourceFilter = new ProjectHealthResourceFilter();
 
         _llmClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>()))
             .Returns(_llmClientMock.Object);
+
+        var promptBuilderMock = new Mock<IAiPromptBuilder>();
 
         _service = new AiIntegrationService(
             _projectRepoMock.Object,
@@ -66,6 +68,7 @@ public class AiIntegrationServiceTests
             _contextBuilderMock.Object,
             _responseParser,
             _responseNormalizer,
+            promptBuilderMock.Object,
             _candidateFilter,
             _ranker,
             projectHealthResourceFilter,

@@ -7,16 +7,16 @@ namespace Server.Repositories.Allocations;
 
 public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 {
-    public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Where(a => a.ResourceProfileId == resourceProfileId && a.AllocationStatus == AllocationStatusConstants.Active)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(
-        IEnumerable<long> employeeIds,
+        IEnumerable<long> resourceProfileIds,
         CancellationToken cancellationToken = default)
     {
-        var ids = employeeIds.ToList();
+        var ids = resourceProfileIds.ToList();
         if (ids.Count == 0)
             return [];
 
@@ -26,30 +26,30 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
     }
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdForWeekAsync(
-        long employeeId,
+        long resourceProfileId,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId
+            .Where(a => a.ResourceProfileId == resourceProfileId
                 && a.AllocationStatus == AllocationStatusConstants.Active
                 && a.AllocationStartDate <= weekEnd
                 && a.AllocationEndDate >= weekStart)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId)
+            .Where(a => a.ResourceProfileId == resourceProfileId)
             .OrderByDescending(a => a.AllocationStartDate)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsForWeekAsync(
-        IEnumerable<long> employeeIds,
+        IEnumerable<long> resourceProfileIds,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default)
     {
-        var ids = employeeIds.ToList();
+        var ids = resourceProfileIds.ToList();
         if (ids.Count == 0)
             return [];
 
@@ -80,18 +80,20 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             .ToListAsync(cancellationToken);
 
     public Task<ProjectAllocation?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.ProjectAllocations.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        context.ProjectAllocations
+            .AsTracking()
+            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(
-        long? employeeId,
+        long? resourceProfileId,
         long? projectId,
         string? status,
         CancellationToken cancellationToken = default)
     {
         var query = context.ProjectAllocations.AsQueryable();
 
-        if (employeeId.HasValue)
-            query = query.Where(a => a.ResourceProfileId == employeeId.Value);
+        if (resourceProfileId.HasValue)
+            query = query.Where(a => a.ResourceProfileId == resourceProfileId.Value);
 
         if (projectId.HasValue)
             query = query.Where(a => a.ProjectId == projectId.Value);

@@ -6,9 +6,10 @@ namespace Tests;
 
 public class LlmClientFactoryTests
 {
-    private sealed class StubLlmClient(string providerKey) : ILlmClient
+    private sealed class StubLlmClient(string providerKey, string apiConfigKey = "test_key") : ILlmClient
     {
         public string ProviderKey { get; } = providerKey;
+        public string ApiConfigKey { get; } = apiConfigKey;
         public Task<string> GenerateCompletionAsync(string prompt, CancellationToken cancellationToken = default) =>
             Task.FromResult("{}");
     }

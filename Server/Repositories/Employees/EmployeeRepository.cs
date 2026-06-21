@@ -10,7 +10,24 @@ public class EmployeeRepository(PrmDbContext context) : IEmployeeRepository
         context.ResourceProfiles.FirstOrDefaultAsync(r => r.UserId == userId, cancellationToken);
 
     public Task<ResourceProfile?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.ResourceProfiles.FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        context.ResourceProfiles
+            .AsTracking()
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyDictionary<long, ResourceProfile>> GetByIdsAsync(
+        IEnumerable<long> ids,
+        CancellationToken cancellationToken = default)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0)
+            return new Dictionary<long, ResourceProfile>();
+
+        var profiles = await context.ResourceProfiles
+            .Where(r => idList.Contains(r.Id))
+            .ToListAsync(cancellationToken);
+
+        return profiles.ToDictionary(r => r.Id);
+    }
 
     public async Task<IReadOnlyList<ResourceProfile>> GetAllAsync(
         string? resourceStatus,

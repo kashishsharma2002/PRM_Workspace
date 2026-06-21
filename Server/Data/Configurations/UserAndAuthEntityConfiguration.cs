@@ -65,34 +65,5 @@ public static class UserAndAuthEntityConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        builder.Entity<Permission>(entity =>
-        {
-            entity.ToTable("PERMISSIONS");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.Resource).HasColumnName("resource").HasMaxLength(50);
-            entity.Property(e => e.Action).HasColumnName("action").HasMaxLength(50);
-            entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(200);
-
-            entity.HasIndex(e => new { e.Resource, e.Action }).IsUnique();
-        });
-
-        builder.Entity<RolePermission>(entity =>
-        {
-            entity.ToTable("ROLE_PERMISSIONS");
-            entity.HasKey(e => new { e.RoleId, e.PermissionId });
-            entity.Property(e => e.RoleId).HasColumnName("role_id");
-            entity.Property(e => e.PermissionId).HasColumnName("permission_id");
-
-            entity.HasOne<Role>()
-                .WithMany()
-                .HasForeignKey(e => e.RoleId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne<Permission>()
-                .WithMany()
-                .HasForeignKey(e => e.PermissionId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
     }
 }

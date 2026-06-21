@@ -14,6 +14,7 @@ using Server.Repositories.Users;
 using Server.Scheduler;
 using Server.Services.Ai.Abstractions;
 using Server.Services.Emails;
+using Server.Services.SystemConfig;
 
 namespace Server.Services.Projects;
 
@@ -22,7 +23,7 @@ public class ProjectHealthService(
     IMilestoneRepository milestoneRepository,
     IAllocationRepository allocationRepository,
     ITimesheetRepository timesheetRepository,
-    ISystemConfigRepository systemConfigRepository,
+    ISystemConfigService systemConfigService,
     IUserRepository userRepository,
     IEmailLogRepository emailLogRepository,
     IEmailService emailService,
@@ -41,14 +42,17 @@ public class ProjectHealthService(
         var milestones = await milestoneRepository.GetByProjectIdsAsync(projectIds, cancellationToken);
         var milestonesByProject = milestones.GroupBy(m => m.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
 
-        var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
+        var maxWeeklyHours = await systemConfigService.GetMaxWeeklyHoursAsync(cancellationToken);
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeek, weekEnd, cancellationToken);
         var allocationsByProject = allocations.GroupBy(a => a.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
         var loggedHoursByProject = await timesheetRepository.GetLoggedHoursByProjectForWeekAsync(lastWeek, cancellationToken);
 
         var evaluatedCount = 0;
         var failedCount = 0;
-        var notificationsSent = 0;
+        var emailsSent = 0;
+        var emailsFailed = 0;
+        var riskAnalysesCompleted = 0;
+        var riskAnalysesFailed = 0;
 
         foreach (var project in projects)
         {
@@ -76,10 +80,12 @@ public class ProjectHealthService(
                 if (!string.Equals(previousHealth, HealthStatusConstants.Red, StringComparison.OrdinalIgnoreCase)
                     && string.Equals(newHealth, HealthStatusConstants.Red, StringComparison.OrdinalIgnoreCase))
                 {
-                    var sent = await SendAtRiskNotificationAsync(
+                    var notificationResult = await SendAtRiskNotificationAsync(
                         project, projectMilestones, newHealth, cancellationToken);
-                    if (sent)
-                        notificationsSent++;
+                    emailsSent += notificationResult.EmailsSent;
+                    emailsFailed += notificationResult.EmailsFailed;
+                    riskAnalysesCompleted += notificationResult.RiskAnalysesCompleted;
+                    riskAnalysesFailed += notificationResult.RiskAnalysesFailed;
                 }
 
                 evaluatedCount++;
@@ -95,19 +101,32 @@ public class ProjectHealthService(
             await projectRepository.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "Project health processed. Evaluated={Evaluated}, Failed={Failed}, NotificationsSent={Notifications}",
+            "Project health processed. Evaluated={Evaluated}, Failed={Failed}, EmailsSent={EmailsSent}, EmailsFailed={EmailsFailed}, RiskAnalysesCompleted={RiskCompleted}, RiskAnalysesFailed={RiskFailed}",
             evaluatedCount,
             failedCount,
-            notificationsSent);
+            emailsSent,
+            emailsFailed,
+            riskAnalysesCompleted,
+            riskAnalysesFailed);
 
         return new SchedulerHealthResultDto
         {
             EvaluatedCount = evaluatedCount,
-            FailedCount = failedCount
+            FailedCount = failedCount,
+            EmailsSent = emailsSent,
+            EmailsFailed = emailsFailed,
+            RiskAnalysesCompleted = riskAnalysesCompleted,
+            RiskAnalysesFailed = riskAnalysesFailed
         };
     }
 
-    private async Task<bool> SendAtRiskNotificationAsync(
+    private sealed record AtRiskNotificationResult(
+        int EmailsSent,
+        int EmailsFailed,
+        int RiskAnalysesCompleted,
+        int RiskAnalysesFailed);
+
+    private async Task<AtRiskNotificationResult> SendAtRiskNotificationAsync(
         Models.Entities.Project project,
         IReadOnlyList<Models.Entities.ProjectMilestone> milestones,
         string healthStatus,
@@ -115,7 +134,7 @@ public class ProjectHealthService(
     {
         var manager = await userRepository.GetByIdAsync(project.ManagerUserId, cancellationToken);
         if (manager is null || string.IsNullOrWhiteSpace(manager.Email))
-            return false;
+            return new AtRiskNotificationResult(0, 0, 0, 0);
 
         var entityReference = $"Project:{project.Id}";
         var alreadySent = await emailLogRepository.WasSentForReferenceAsync(
@@ -124,9 +143,9 @@ public class ProjectHealthService(
             entityReference,
             cancellationToken);
         if (alreadySent)
-            return false;
+            return new AtRiskNotificationResult(0, 0, 0, 0);
 
-        var riskSummary = await BuildRiskSummaryAsync(project, cancellationToken);
+        var (riskSummary, riskAnalysisSucceeded) = await BuildRiskSummaryAsync(project, cancellationToken);
         var resourceList = await BuildResourceListAsync(project, cancellationToken);
         var milestoneSummary = BuildMilestoneSummary(milestones);
 
@@ -140,13 +159,19 @@ public class ProjectHealthService(
             ["ResourceList"] = resourceList
         };
 
-        return await emailService.SendNotificationAsync(
+        var sent = await emailService.SendNotificationAsync(
             manager.Email,
             EmailTypeConstants.ProjectAtRisk,
             placeholders,
             entityReference,
             $"project-risk-{project.Id}-{DateTime.UtcNow:yyyyMMdd}",
             cancellationToken);
+
+        return new AtRiskNotificationResult(
+            EmailsSent: sent ? 1 : 0,
+            EmailsFailed: sent ? 0 : 1,
+            RiskAnalysesCompleted: riskAnalysisSucceeded ? 1 : 0,
+            RiskAnalysesFailed: riskAnalysisSucceeded ? 0 : 1);
     }
 
     private static string FormatHealthStatus(string healthStatus) => healthStatus.ToUpperInvariant() switch
@@ -163,10 +188,10 @@ public class ProjectHealthService(
             return "No milestones defined for this project.";
 
         return string.Join(
-            "<br/>",
+            Environment.NewLine,
             milestones
                 .OrderBy(m => m.DueDate)
-                .Take(8)
+                .Take(EmailDefaults.MaxMilestonesInHealthEmail)
                 .Select(m =>
                 {
                     var status = m.CompletedAt.HasValue ? "Completed" : "Pending";
@@ -174,7 +199,7 @@ public class ProjectHealthService(
                 }));
     }
 
-    private async Task<string> BuildRiskSummaryAsync(
+    private async Task<(string Summary, bool RiskAnalysisSucceeded)> BuildRiskSummaryAsync(
         Models.Entities.Project project,
         CancellationToken cancellationToken)
     {
@@ -184,15 +209,15 @@ public class ProjectHealthService(
                 project.ManagerUserId, project.Id, cancellationToken);
 
             if (risk.Recommendations.Count == 0)
-                return risk.Summary;
+                return (risk.Summary, true);
 
-            var recommendations = string.Join("<br/>", risk.Recommendations.Select(r => $"• {r}"));
-            return $"{risk.Summary}<br/><br/>{recommendations}";
+            var recommendations = string.Join(Environment.NewLine, risk.Recommendations.Select(r => $"• {r}"));
+            return ($"{risk.Summary}{Environment.NewLine}{Environment.NewLine}{recommendations}", true);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "AI risk summary unavailable for project {ProjectId}", project.Id);
-            return "AI risk analysis is currently unavailable. Please review project milestones and resource utilization.";
+            return ("AI risk analysis is currently unavailable. Please review project milestones and resource utilization.", false);
         }
     }
 
@@ -213,8 +238,8 @@ public class ProjectHealthService(
                 return "No resource recommendations available at this time.";
 
             return string.Join(
-                "<br/>",
-                matches.Matches.Take(5).Select(m =>
+                Environment.NewLine,
+                matches.Matches.Take(EmailDefaults.MaxResourceRecommendationsInHealthEmail).Select(m =>
                     $"• {m.EmployeeName} ({m.SkillName}, score {m.MatchScore}) — {FormatAvailability(m.RemainingCapacityPercentage)}"));
         }
         catch (Exception ex)
@@ -228,13 +253,4 @@ public class ProjectHealthService(
         remainingCapacityPercentage >= AllocationConstants.MaxUtilizationPercentage
             ? "Fully available"
             : $"{remainingCapacityPercentage:0.#}% available";
-
-    private async Task<decimal> GetMaxWeeklyHoursAsync(CancellationToken cancellationToken)
-    {
-        var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
-        if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
-            return TimesheetDefaults.DefaultMaxWeeklyHours;
-
-        return maxHours;
-    }
 }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Server.AI.Configuration;
 using Server.Common;
 using Server.Common.Audit;
 using Server.Models.DTOs.SystemConfig;
@@ -68,5 +69,58 @@ public class SystemConfigServiceTests
 
         Assert.Equal("ENC:my-secret-key-123", config.ConfigValue);
         _systemConfigRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateConfigAsync_ChangingProviderWithoutApiKey_ThrowsValidation()
+    {
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmProvider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SystemConfiguration { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = LlmProviderKeys.Gemini });
+
+        await Assert.ThrowsAsync<Server.Exceptions.ValidationAppException>(() =>
+            _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
+            {
+                LlmProvider = LlmProviderKeys.Groq
+            }));
+    }
+
+    [Fact]
+    public async Task UpdateConfigAsync_ChangingProviderWithApiKey_UpdatesBoth()
+    {
+        var providerConfig = new SystemConfiguration { ConfigKey = ConfigKeys.LlmProvider, ConfigValue = LlmProviderKeys.Gemini };
+        var apiKeyConfig = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "old" };
+
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmProvider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(providerConfig);
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(apiKeyConfig);
+        _encryptionMock.Setup(e => e.Encrypt("new-groq-key"))
+            .Returns("ENC:new-groq-key");
+
+        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
+        {
+            LlmProvider = LlmProviderKeys.Groq,
+            LlmApiKey = "new-groq-key"
+        });
+
+        Assert.Equal(LlmProviderKeys.Groq, providerConfig.ConfigValue);
+        Assert.Equal("ENC:new-groq-key", apiKeyConfig.ConfigValue);
+    }
+
+    [Fact]
+    public async Task UpdateConfigAsync_UpdatingApiKeyOnly_DoesNotRequireProvider()
+    {
+        var apiKeyConfig = new SystemConfiguration { ConfigKey = ConfigKeys.LlmApiKey, ConfigValue = "old" };
+        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(apiKeyConfig);
+        _encryptionMock.Setup(e => e.Encrypt("replacement-key"))
+            .Returns("ENC:replacement-key");
+
+        await _systemConfigService.UpdateConfigAsync(1, new UpdateSystemConfigRequestDto
+        {
+            LlmApiKey = "replacement-key"
+        });
+
+        Assert.Equal("ENC:replacement-key", apiKeyConfig.ConfigValue);
     }
 }

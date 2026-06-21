@@ -5,6 +5,7 @@ namespace Server.Repositories.Projects;
 public interface IProjectRepository
 {
     Task<Project?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<long, Project>> GetByIdsAsync(IEnumerable<long> ids, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Project>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Project>> GetByManagerUserIdAsync(long managerUserId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Project>> GetActiveAsync(CancellationToken cancellationToken = default);

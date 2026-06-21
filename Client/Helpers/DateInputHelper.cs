@@ -43,7 +43,7 @@ public static class DateInputHelper
 
         if (string.IsNullOrWhiteSpace(input))
         {
-            weekStart = defaultWeekStart ?? GetLastMonday();
+            weekStart = defaultWeekStart ?? GetMostRecentCompletedWeekMonday();
             return true;
         }
 
@@ -53,13 +53,21 @@ public static class DateInputHelper
             return false;
         }
 
-        weekStart = DateOnly.Parse(isoDate, CultureInfo.InvariantCulture);
-        if (weekStart.DayOfWeek != DayOfWeek.Monday)
+        var parsedDate = DateOnly.Parse(isoDate, CultureInfo.InvariantCulture);
+        weekStart = GetWeekStartMonday(parsedDate);
+
+        if (parsedDate != weekStart)
         {
-            error = "Week start date must be a Monday.";
-            return false;
+            Console.WriteLine(
+                $"  Note: Week is stored by Monday. Using week of {FormatDisplay(weekStart)}.");
         }
 
         return true;
+    }
+
+    public static DateOnly GetWeekStartMonday(DateOnly date)
+    {
+        var daysSinceMonday = ((int)date.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        return date.AddDays(-daysSinceMonday);
     }
 }

@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Employees;
@@ -10,13 +11,14 @@ public static class ResourceDashboardScreen
     {
         while (true)
         {
-            try
+            var exitScreen = false;
+            await ScreenRunner.RunSafeAsync(async () =>
             {
                 ConsoleHelper.PrintHeader("Employee/Resource Dashboard");
                 var dashboard = await clients.Manager.GetTeamDashboardAsync();
-                if (dashboard is null)
+                if (!ApiLoadHelper.RequireLoaded(dashboard, "Could not load team dashboard."))
                 {
-                    ConsoleHelper.PrintError("Could not load team dashboard.");
+                    exitScreen = true;
                     return;
                 }
 
@@ -48,32 +50,30 @@ public static class ResourceDashboardScreen
                 Console.Write("Enter option: ");
                 var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-                if (choice == "B")
+                if (choice == MenuChoices.Back)
+                {
+                    exitScreen = true;
                     return;
+                }
 
                 if (choice != "D")
                 {
                     ConsoleHelper.PrintError("Invalid option.");
-                    continue;
+                    return;
                 }
 
                 Console.Write("Enter Employee/Resource ID: ");
                 if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
                 {
                     ConsoleHelper.PrintError("Invalid employee/resource ID.");
-                    continue;
+                    return;
                 }
 
                 await ShowMemberDetailAsync(clients, employeeId);
-            }
-            catch (SessionExpiredException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                ErrorDisplayHelper.HandleException(ex);
-            }
+            });
+
+            if (exitScreen)
+                return;
         }
     }
 
@@ -81,11 +81,8 @@ public static class ResourceDashboardScreen
     {
         var detail = await clients.Manager.GetTeamMemberDetailAsync(employeeId);
 
-        if (detail is null)
-        {
-            ConsoleHelper.PrintError("Employee/Resource not found.");
+        if (!ApiLoadHelper.RequireLoaded(detail, "Employee/Resource not found."))
             return;
-        }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"── {detail.FullName} ─────────────────────────────────");
@@ -125,15 +122,11 @@ public static class ResourceDashboardScreen
             if (key.KeyChar is 'r' or 'R')
             {
                 Console.WriteLine();
-                try
+                await ScreenRunner.RunSafeAsync(async () =>
                 {
                     await clients.Manager.RestoreTimesheetAccessAsync(employeeId);
                     ConsoleHelper.PrintSuccess("Timesheet access restored.");
-                }
-                catch (Exception ex)
-                {
-                    ErrorDisplayHelper.HandleException(ex);
-                }
+                });
             }
             else
             {

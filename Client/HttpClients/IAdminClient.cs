@@ -5,8 +5,12 @@ public interface IAdminClient
     Task<UserListResponse?> GetUsersAsync();
     Task<CreateUserResponse?> CreateUserAsync(CreateUserRequest request);
     Task ResetPasswordAsync(long userId, ResetPasswordRequest request);
+    Task UpdateUserRoleAsync(long userId, UpdateUserRoleRequest request);
     Task DeactivateUserAsync(long userId);
     Task ReactivateUserAsync(long userId);
+    Task<RoleListResponse?> GetRolesAsync();
+    Task<RolePermissionsResponse?> GetRolePermissionsAsync(string roleName);
+    Task<AuditLogListResponse?> GetAuditLogsAsync(string? query = null);
     Task<EmployeeListResponse?> GetEmployeesAsync(string? query = null);
     Task<EmployeeDetail?> GetEmployeeAsync(long employeeId);
     Task UpdateEmployeeAsync(long employeeId, UpdateEmployeeRequest request);

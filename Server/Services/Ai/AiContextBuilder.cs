@@ -5,7 +5,9 @@ using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class AiContextBuilder(IAiContextRepository aiContextRepository) : IAiContextBuilder
+public class AiContextBuilder(
+    IAiContextRepository aiContextRepository,
+    IAiSkillMatchContextAssembler skillMatchContextAssembler) : IAiContextBuilder
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -25,16 +27,24 @@ public class AiContextBuilder(IAiContextRepository aiContextRepository) : IAiCon
         long projectId,
         CancellationToken cancellationToken = default)
     {
-        var context = await aiContextRepository.GetSkillMatchContextAsync(projectId, cancellationToken)
+        var projectContext = await aiContextRepository.GetSkillMatchContextAsync(projectId, cancellationToken)
             ?? throw new KeyNotFoundException($"Project with ID {projectId} not found.");
 
-        return (context, JsonSerializer.Serialize(context, JsonOptions));
+        var rawData = await aiContextRepository.GetSkillMatchRawDataAsync(cancellationToken);
+        projectContext.Candidates = skillMatchContextAssembler.AssembleCandidates(rawData);
+
+        return (projectContext, JsonSerializer.Serialize(projectContext, JsonOptions));
     }
 
     public async Task<(AiOrganizationalSkillMatchContextModel Context, string Json)> BuildOrganizationalSkillMatchContextAsync(
         CancellationToken cancellationToken = default)
     {
-        var context = await aiContextRepository.GetOrganizationalSkillMatchContextAsync(cancellationToken);
+        var rawData = await aiContextRepository.GetSkillMatchRawDataAsync(cancellationToken);
+        var context = new AiOrganizationalSkillMatchContextModel
+        {
+            Candidates = skillMatchContextAssembler.AssembleCandidates(rawData)
+        };
+
         return (context, JsonSerializer.Serialize(context, JsonOptions));
     }
 
@@ -42,11 +52,11 @@ public class AiContextBuilder(IAiContextRepository aiContextRepository) : IAiCon
         string requirement,
         CancellationToken cancellationToken = default)
     {
-        var orgContext = await aiContextRepository.GetOrganizationalSkillMatchContextAsync(cancellationToken);
+        var rawData = await aiContextRepository.GetSkillMatchRawDataAsync(cancellationToken);
         return new AiTeamBuilderContextModel
         {
             ManagerRequirement = requirement,
-            AllCandidates = orgContext.Candidates
+            AllCandidates = skillMatchContextAssembler.AssembleCandidates(rawData)
         };
     }
 

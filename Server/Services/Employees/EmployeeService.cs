@@ -23,10 +23,18 @@ public partial class EmployeeService(
     IEmployeeSkillRepository employeeSkillRepository,
     IAllocationRepository allocationRepository,
     IProjectRepository projectRepository,
-    ITimesheetRepository timesheetRepository,
+    IEmployeeTeamService employeeTeamService,
     IAuditService auditService,
     ILogger<EmployeeService> logger) : IEmployeeService
 {
+    public Task<TeamDashboardDto> GetTeamDashboardAsync(long managerUserId, CancellationToken cancellationToken = default) =>
+        employeeTeamService.GetTeamDashboardAsync(managerUserId, cancellationToken);
+
+    public Task<TeamMemberDetailDto> GetTeamMemberDetailAsync(long managerUserId, long employeeId, CancellationToken cancellationToken = default) =>
+        employeeTeamService.GetTeamMemberDetailAsync(managerUserId, employeeId, cancellationToken);
+
+    public Task RestoreTimesheetAccessAsync(long managerUserId, long employeeId, CancellationToken cancellationToken = default) =>
+        employeeTeamService.RestoreTimesheetAccessAsync(managerUserId, employeeId, cancellationToken);
     public async Task<EmployeeListResponseDto> GetAllEmployeesAsync(
         string? status,
         string? department,
@@ -65,34 +73,14 @@ public partial class EmployeeService(
             ?? throw new NotFoundAppException("Linked user not found.");
 
         var profileSkills = await employeeSkillRepository.GetByUserIdAsync(profile.UserId, cancellationToken);
-        var skills = new List<EmployeeSkillDto>();
-        foreach (var ps in profileSkills)
-        {
-            var skill = await skillRepository.GetByIdAsync(ps.SkillId, cancellationToken);
-            if (skill is null) continue;
-            skills.Add(new EmployeeSkillDto
-            {
-                SkillId = skill.Id,
-                SkillName = skill.SkillName,
-                Category = skill.Category,
-                ProficiencyLevel = ps.ProficiencyLevel
-            });
-        }
+        var skillIds = profileSkills.Select(ps => ps.SkillId).Distinct().ToList();
+        var skillsById = await skillRepository.GetByIdsAsync(skillIds, cancellationToken);
+        var skills = EmployeeDtoMapper.MapSkills(profileSkills, skillsById);
 
         var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(employeeId, cancellationToken);
-        var allocationDtos = new List<ActiveAllocationDto>();
-        foreach (var allocation in activeAllocations)
-        {
-            var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
-            allocationDtos.Add(new ActiveAllocationDto
-            {
-                AllocationId = allocation.Id,
-                ProjectName = project?.ProjectName ?? "Unknown",
-                AllocationPercentage = allocation.AllocationPercentage,
-                AllocationStartDate = allocation.AllocationStartDate,
-                AllocationEndDate = allocation.AllocationEndDate
-            });
-        }
+        var projectIds = activeAllocations.Select(a => a.ProjectId).Distinct().ToList();
+        var projectsById = await projectRepository.GetByIdsAsync(projectIds, cancellationToken);
+        var allocationDtos = EmployeeDtoMapper.MapActiveAllocations(activeAllocations, projectsById);
 
         return new EmployeeDetailDto
         {
@@ -197,6 +185,7 @@ public partial class EmployeeService(
     }
 
     public async Task AssignManagerAsync(
+        long actorUserId,
         long employeeId,
         AssignManagerRequestDto request,
         CancellationToken cancellationToken = default)
@@ -213,9 +202,23 @@ public partial class EmployeeService(
         if (profile.UserId == request.ManagerUserId)
             throw new ValidationAppException("Employee cannot be their own manager.");
 
+        var employeeUser = await userRepository.GetByIdAsync(profile.UserId, cancellationToken)
+            ?? throw new NotFoundAppException("Employee user not found.");
+
+        var oldManagerId = profile.ManagerId;
         profile.ManagerId = request.ManagerUserId;
         profile.UpdatedAt = DateTime.UtcNow;
         await employeeRepository.UpdateAsync(profile, cancellationToken);
+
+        await auditService.LogUpdateAsync(
+            actorUserId,
+            AuditEntityConstants.Employees,
+            profile.Id,
+            new { managerUserId = oldManagerId },
+            new { managerUserId = request.ManagerUserId },
+            cancellationToken,
+            AuditMessageBuilder.BuildManagerAssignmentSummary(employeeUser.FullName, manager.FullName));
+
         await employeeRepository.SaveChangesAsync(cancellationToken);
     }
 

@@ -7,18 +7,14 @@ namespace Client.Screens.Admin;
 
 public static class SystemConfigScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        try
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
             while (true)
             {
                 var config = await clients.Admin.GetSystemConfigAsync();
-                if (config is null)
-                {
-                    ConsoleHelper.PrintError("Failed to load configuration.");
+                if (!ApiLoadHelper.RequireLoaded(config, "Failed to load configuration."))
                     return;
-                }
 
                 ConsoleHelper.PrintHeader("System Configuration");
                 Console.WriteLine("Current Settings:");
@@ -39,13 +35,13 @@ public static class SystemConfigScreen
 
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await UpdateApiKeyAsync(clients, config.LlmProvider);
                         break;
-                    case "2":
-                        await UpdateProviderAsync(clients);
+                    case MenuChoices.Two:
+                        await UpdateProviderAsync(clients, config.LlmProvider);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await UpdateSchedulerAsync(clients);
                         break;
                     case "4":
@@ -54,17 +50,14 @@ public static class SystemConfigScreen
                     case "5":
                         await UpdateTimesheetDeadlineAsync(clients, config.TimesheetDeadlineWorkingDaysAfterWeekEnd);
                         break;
-                    case "0":
+                    case MenuChoices.Exit:
                         return;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
             }
-        }
-        catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
-    }
+        });
 
     private static async Task UpdateApiKeyAsync(AppClients clients, string currentProvider)
     {
@@ -92,15 +85,15 @@ public static class SystemConfigScreen
         ConsoleHelper.PrintSuccess("LLM API key updated.");
     }
 
-    private static async Task UpdateProviderAsync(AppClients clients)
+    private static async Task UpdateProviderAsync(AppClients clients, string currentProvider)
     {
         Console.WriteLine("(1) Gemini  (2) Groq  (3) Gemma (local Ollama)");
         Console.Write("Select provider: ");
         var provider = Console.ReadLine()?.Trim() switch
         {
-            "1" => LlmProviders.Gemini,
-            "2" => LlmProviders.Groq,
-            "3" => LlmProviders.Gemma,
+            MenuChoices.One => LlmProviders.Gemini,
+            MenuChoices.Two => LlmProviders.Groq,
+            MenuChoices.Three => LlmProviders.Gemma,
             _ => string.Empty
         };
 
@@ -110,8 +103,35 @@ public static class SystemConfigScreen
             return;
         }
 
-        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest { LlmProvider = provider });
-        ConsoleHelper.PrintSuccess("LLM provider updated.");
+        if (provider.Equals(currentProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            ConsoleHelper.PrintError("Selected provider is already active.");
+            return;
+        }
+
+        string apiKey;
+        if (provider.Equals(LlmProviders.Gemma, StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Write("New LLM API Key (press Enter for empty Gemma/Ollama key): ");
+            apiKey = ReadMaskedInput();
+        }
+        else
+        {
+            Console.Write("New LLM API Key (required when changing provider): ");
+            apiKey = ReadMaskedInput();
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                ConsoleHelper.PrintError("API key is required when changing the LLM provider.");
+                return;
+            }
+        }
+
+        await clients.Admin.UpdateSystemConfigAsync(new UpdateSystemConfigRequest
+        {
+            LlmProvider = provider,
+            LlmApiKey = apiKey
+        });
+        ConsoleHelper.PrintSuccess("LLM provider and API key updated.");
     }
 
     private static async Task UpdateSchedulerAsync(AppClients clients)

@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -5,30 +6,29 @@ namespace Client.Screens.Admin;
 
 public static class AssignManagerScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Assign Manager");
-        Console.WriteLine("Enter the Resource Profile ID from All Employees/Resources.");
-        Console.WriteLine();
-
-        Console.Write("Employee/Resource ID : ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeProfileId))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Invalid employee/resource ID.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Assign Manager");
+            Console.WriteLine("Enter the Resource Profile ID from All Employees/Resources.");
+            Console.WriteLine();
 
-        Console.Write("Manager User ID  : ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var managerUserId))
-        {
-            ConsoleHelper.PrintError("Invalid manager user ID.");
-            return;
-        }
+            Console.Write("Employee/Resource ID : ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeProfileId))
+            {
+                ConsoleHelper.PrintError("Invalid employee/resource ID.");
+                return;
+            }
 
-        try
-        {
+            Console.Write("Manager User ID  : ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var managerUserId))
+            {
+                ConsoleHelper.PrintError("Invalid manager user ID.");
+                return;
+            }
+
             var list = await clients.Admin.GetEmployeesAsync();
-            var employee = list?.Employees.FirstOrDefault(e => e.Id == employeeProfileId);
+            var employee = list?.Employees?.FirstOrDefault(e => e.Id == employeeProfileId);
             if (employee is null)
             {
                 ConsoleHelper.PrintError(
@@ -43,7 +43,7 @@ public static class AssignManagerScreen
                 return;
             }
 
-            if (!manager.IsActive || !string.Equals(manager.Role, Client.Common.RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
+            if (!manager.IsActive || !string.Equals(manager.Role, RoleConstants.Manager, StringComparison.OrdinalIgnoreCase))
             {
                 ConsoleHelper.PrintError($"{manager.FullName} is not an active manager account.");
                 return;
@@ -56,8 +56,7 @@ public static class AssignManagerScreen
             Console.WriteLine($"Employee/Resource : {employee.FullName} (Profile ID {employee.Id}, User ID {employee.UserId})");
             Console.WriteLine($"Manager           : {manager.FullName} (User ID {manager.Id})");
             ConsoleHelper.PrintDivider();
-            Console.Write("[S] Save  [B] Back — choice: ");
-            if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
+            if (!FormInputHelper.ConfirmSave())
                 return;
 
             await clients.Admin.AssignManagerAsync(
@@ -65,14 +64,5 @@ public static class AssignManagerScreen
                 new AssignManagerRequest { ManagerUserId = managerUserId });
 
             ConsoleHelper.PrintSuccess($"Manager assigned. {manager.FullName} will see this employee/resource after logging in.");
-        }
-        catch (SessionExpiredException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 }

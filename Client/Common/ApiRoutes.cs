@@ -15,6 +15,13 @@ public static class ApiRoutes
     public static string UserResetPassword(long userId) => $"/api/users/{userId}/reset-password";
     public static string UserDeactivate(long userId) => $"/api/users/{userId}/deactivate";
     public static string UserReactivate(long userId) => $"/api/users/{userId}/reactivate";
+    public static string UserRole(long userId) => $"/api/users/{userId}/roles";
+
+    public const string Roles = "/api/roles";
+    public static string RolePermissions(string roleName) => $"/api/roles/{roleName}/permissions";
+
+    public const string AuditLogs = "/api/audit-logs";
+    public static string AuditLogsWithQuery(string query) => $"/api/audit-logs?{query}";
 
     public const string Employees = "/api/employees";
     public static string EmployeesWithQuery(string query) => $"/api/employees?{query}";
@@ -48,8 +55,8 @@ public static class ApiRoutes
     public static string TimesheetMyById(long timesheetId) => $"/api/timesheets/my/{timesheetId}";
     public const string TimesheetsTeam = "/api/timesheets/team";
     public static string TimesheetsTeamWithWeek(DateOnly weekStart) =>
-        $"/api/timesheets/team?weekStart={weekStart:yyyy-MM-dd}";
-    public static string TimesheetTeamById(long timesheetId) => $"/api/timesheets/team/{timesheetId}";
+        $"/api/timesheets/team?week={weekStart:yyyy-MM-dd}";
+    public static string TimesheetTeamById(long timesheetId) => $"/api/timesheets/{timesheetId}";
     public static string TimesheetAllocations(DateOnly weekStart) =>
         $"/api/timesheets/week-allocations?weekStart={weekStart:yyyy-MM-dd}";
     public const string TimesheetsReminder = "/api/timesheets/reminder";

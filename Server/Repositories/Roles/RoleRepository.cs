@@ -19,6 +19,24 @@ public class RoleRepository(PrmDbContext context) : IRoleRepository
         return roleName;
     }
 
+    public async Task<IReadOnlyDictionary<long, string>> GetRoleNamesForUsersAsync(
+        IEnumerable<long> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        var idList = userIds.Distinct().ToList();
+        if (idList.Count == 0)
+            return new Dictionary<long, string>();
+
+        var rows = await context.UserRoles
+            .Where(ur => idList.Contains(ur.UserId))
+            .Join(context.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur.UserId, r.RoleName })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(r => r.UserId)
+            .ToDictionary(g => g.Key, g => g.First().RoleName);
+    }
+
     public Task<bool> UserHasRoleAsync(long userId, string roleName, CancellationToken cancellationToken = default) =>
         context.UserRoles
             .Where(ur => ur.UserId == userId)
@@ -47,6 +65,7 @@ public class RoleRepository(PrmDbContext context) : IRoleRepository
         CancellationToken cancellationToken = default)
     {
         var existingRoles = await context.UserRoles
+            .AsTracking()
             .Where(ur => ur.UserId == userId)
             .ToListAsync(cancellationToken);
 

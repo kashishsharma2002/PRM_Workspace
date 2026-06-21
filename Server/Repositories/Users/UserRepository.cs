@@ -18,7 +18,9 @@ public class UserRepository(PrmDbContext context) : IUserRepository
         context.Users.FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
 
     public Task<User?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        context.Users
+            .AsTracking()
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
     public async Task<IReadOnlyDictionary<long, User>> GetByIdsAsync(IEnumerable<long> ids, CancellationToken cancellationToken = default)
     {

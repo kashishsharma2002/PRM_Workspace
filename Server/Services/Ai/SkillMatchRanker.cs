@@ -2,12 +2,14 @@ using Microsoft.Extensions.Logging;
 using Server.Common;
 using Server.Models.DTOs.Ai;
 using Server.Models.DTOs.Ai.Context;
+using Server.Services.Ai.Abstractions;
 
 namespace Server.Services.Ai;
 
-public class SkillMatchRanker(ILogger<SkillMatchRanker> logger)
+public class SkillMatchRanker(
+    ISkillMatchCandidateFilter skillMatchCandidateFilter,
+    ILogger<SkillMatchRanker> logger) : ISkillMatchRanker
 {
-    private const decimal MinimumMatchThreshold = 50m;
     private const decimal LlmScoreWeight = 0.40m;
     private const decimal SkillMatchWeight = 0.30m;
     private const decimal ProficiencyWeight = 0.20m;
@@ -34,7 +36,22 @@ public class SkillMatchRanker(ILogger<SkillMatchRanker> logger)
                 continue;
             }
 
-            var skillMatchScore = CalculateSkillMatchScore(candidate, match.SkillName);
+            var skillMatchScore = CalculateSkillMatchScore(candidate, match.SkillName, requirement);
+            if (skillMatchScore < 100m)
+            {
+                logger.LogDebug(
+                    "Filtered out non-matching skill candidate: {EmployeeName} for requirement: {Requirement}",
+                    match.EmployeeName, requirement);
+                continue;
+            }
+
+            var keywords = string.IsNullOrWhiteSpace(requirement)
+                ? []
+                : skillMatchCandidateFilter.ExtractKeywords(requirement);
+            var resolvedSkill = skillMatchCandidateFilter.ResolvePrimaryMatchingSkill(candidate, keywords);
+            if (!string.IsNullOrWhiteSpace(resolvedSkill))
+                match.SkillName = resolvedSkill;
+
             var proficiencyScore = CalculateProficiencyScore(candidate, match.SkillName);
             var capacityScore = candidate.RemainingCapacityPercentage;
 
@@ -44,42 +61,37 @@ public class SkillMatchRanker(ILogger<SkillMatchRanker> logger)
                             (proficiencyScore * ProficiencyWeight) +
                             (capacityScore * CapacityWeight);
 
-            if (finalScore >= MinimumMatchThreshold)
-            {
-                match.MatchScore = (int)Math.Round(finalScore);
-                match.RemainingCapacityPercentage = candidate.RemainingCapacityPercentage;
-                rankedMatches.Add(match);
-            }
-            else
-            {
-                logger.LogDebug(
-                    "Filtered out low-scoring match: {EmployeeName} (score: {Score})",
-                    match.EmployeeName, finalScore);
-            }
+            match.MatchScore = (int)Math.Round(finalScore);
+            match.RemainingCapacityPercentage = candidate.RemainingCapacityPercentage;
+            rankedMatches.Add(match);
         }
 
-        rankedMatches = rankedMatches.OrderByDescending(m => m.MatchScore).ToList();
-
-        if (rankedMatches.Count < response.Matches.Count)
-        {
-            logger.LogDebug(
-                "Ranked and filtered matches. Input: {InputCount}, Output: {OutputCount}, Threshold: {Threshold}",
-                response.Matches.Count, rankedMatches.Count, MinimumMatchThreshold);
-        }
-
-        response.Matches = rankedMatches;
+        response.Matches = rankedMatches.OrderByDescending(m => m.MatchScore).ToList();
         return response;
     }
 
-    private decimal CalculateSkillMatchScore(AiSkillMatchCandidateContext candidate, string? matchedSkill)
+    private decimal CalculateSkillMatchScore(
+        AiSkillMatchCandidateContext candidate,
+        string? matchedSkill,
+        string? requirement)
     {
-        if (string.IsNullOrWhiteSpace(matchedSkill) || candidate.Skills == null)
+        if (candidate.Skills == null || candidate.Skills.Count == 0)
             return 0m;
 
-        var matchCount = candidate.Skills.Count(s =>
-            s.SkillName.Equals(matchedSkill, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(requirement))
+            return 0m;
 
-        return matchCount > 0 ? 100m : 0m;
+        var keywords = skillMatchCandidateFilter.ExtractKeywords(requirement);
+        if (keywords.Count == 0 || !skillMatchCandidateFilter.HasRelevantSkills(candidate, keywords))
+            return 0m;
+
+        if (!string.IsNullOrWhiteSpace(matchedSkill) &&
+            candidate.Skills.Any(s => s.SkillName.Equals(matchedSkill, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 100m;
+        }
+
+        return 100m;
     }
 
     private decimal CalculateProficiencyScore(AiSkillMatchCandidateContext candidate, string? skillName)

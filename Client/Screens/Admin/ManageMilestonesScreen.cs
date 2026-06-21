@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -5,27 +6,23 @@ namespace Client.Screens.Admin;
 
 public static class ManageMilestonesScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Milestones");
-
-        Console.Write("Enter Project ID: ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var projectId))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Invalid project ID.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Milestones");
 
-        try
-        {
+            Console.Write("Enter Project ID: ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var projectId))
+            {
+                ConsoleHelper.PrintError("Invalid project ID.");
+                return;
+            }
+
             while (true)
             {
                 var list = await clients.Admin.GetMilestonesAsync(projectId);
-                if (list is null)
-                {
-                    ConsoleHelper.PrintError("Project not found.");
+                if (!ApiLoadHelper.RequireLoaded(list, "Project not found."))
                     return;
-                }
 
                 ConsoleHelper.PrintHeader($"Milestones — {list.ProjectName}");
                 Console.WriteLine($"{"#",-4}{"Title",-22}{"Due Date",-12}{"Story Pts",-10}{"Status"}");
@@ -48,48 +45,36 @@ public static class ManageMilestonesScreen
 
                 switch (choice)
                 {
-                    case "1":
-                        await AddMilestoneAsync(clients, projectId);
+                    case MenuChoices.One:
+                        await AddMilestoneAsync(clients, projectId, list);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await UpdateStatusAsync(clients, projectId, list.Milestones);
                         break;
-                    case "3":
-                    case "0":
+                    case MenuChoices.Three:
+                    case MenuChoices.Exit:
                         return;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
             }
-        }
-        catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
-    }
+        });
 
-    private static async Task AddMilestoneAsync(AppClients clients, long projectId)
+    private static async Task AddMilestoneAsync(AppClients clients, long projectId, MilestoneListResponse project)
     {
-        Console.Write("Milestone Title  : ");
-        var title = Console.ReadLine()?.Trim() ?? string.Empty;
-
-        Console.Write("Due Date         : (DD-MM-YYYY) ");
-        if (!DateInputHelper.TryParseToIso(Console.ReadLine() ?? string.Empty, out var dueIso))
-        {
-            ConsoleHelper.PrintError("Invalid due date.");
-            return;
-        }
-
-        Console.Write("Story Points     : ");
-        if (!int.TryParse(Console.ReadLine()?.Trim(), out var points) || points < 0)
-        {
-            ConsoleHelper.PrintError("Invalid story points.");
-            return;
-        }
+        var title = FormInputHelper.PromptRequired("Milestone Title");
+        var dueDate = FormInputHelper.PromptDateInRange(
+            project.StartDate,
+            project.EndDate,
+            "Due Date",
+            allowPastDates: false);
+        var points = FormInputHelper.PromptInt("Story Points", minValue: 0);
 
         await clients.Admin.CreateMilestoneAsync(projectId, new CreateMilestoneRequest
         {
             MilestoneTitle = title,
-            DueDate = DateOnly.Parse(dueIso),
+            DueDate = dueDate,
             StoryPoints = points
         });
 
@@ -115,9 +100,9 @@ public static class ManageMilestonesScreen
         Console.Write("Enter choice      : ");
         var status = Console.ReadLine()?.Trim() switch
         {
-            "1" => "NOT_STARTED",
-            "2" => "IN_PROGRESS",
-            "3" => "DONE",
+            MenuChoices.One => "NOT_STARTED",
+            MenuChoices.Two => "IN_PROGRESS",
+            MenuChoices.Three => "DONE",
             _ => string.Empty
         };
 

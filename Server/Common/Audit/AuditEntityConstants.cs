@@ -9,4 +9,6 @@ public static class AuditEntityConstants
     public const string Timesheets = "TIMESHEETS";
     public const string SystemConfigurations = "SYSTEM_CONFIGURATIONS";
     public const string ResourceProfiles = "RESOURCE_PROFILES";
+    public const string Roles = "ROLES";
+    public const string Auth = "AUTH";
 }

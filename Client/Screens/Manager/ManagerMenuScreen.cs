@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -23,39 +24,39 @@ public static class ManagerMenuScreen
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            if (choice == MenuChoices.Exit)
+            {
+                SessionStore.Clear();
+                clients.SetToken(null);
+                ConsoleHelper.PrintSuccess("Logged out.");
+                return false;
+            }
+
+            if (!await ScreenRunner.TryRunMenuActionAsync(async () =>
             {
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await ResourceDashboardScreen.RunAsync(clients);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await AllocateResourceScreen.RunAsync(clients);
                         break;
                     case "5":
                         await AiAssistantScreen.RunAsync(clients);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await MyProjectsScreen.RunAsync(clients);
                         break;
                     case "4":
                         await TimesheetsScreen.RunAsync(clients);
                         break;
-                    case "0":
-                        SessionStore.Clear();
-                        clients.SetToken(null);
-                        ConsoleHelper.PrintSuccess("Logged out.");
-                        return false;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
-            }
-            catch (SessionExpiredException)
-            {
+            }))
                 return false;
-            }
         }
     }
 }

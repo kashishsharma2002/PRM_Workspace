@@ -19,11 +19,13 @@ public static class AiServiceCollectionExtensions
         services.AddScoped<ILlmConfigResolver, LlmConfigResolver>();
         services.AddScoped<ILlmApiKeyResolver, LlmApiKeyResolver>();
         services.AddScoped<IAiContextBuilder, AiContextBuilder>();
+        services.AddScoped<IAiSkillMatchContextAssembler, AiSkillMatchContextAssembler>();
         services.AddScoped<IAiResponseParser, AiResponseParser>();
         services.AddScoped<ITeamBuilderResponseNormalizer, TeamBuilderResponseNormalizer>();
-        services.AddScoped<SkillMatchCandidateFilter>();
-        services.AddScoped<SkillMatchRanker>();
-        services.AddScoped<ProjectHealthResourceFilter>();
+        services.AddScoped<IAiPromptBuilder, AiPromptBuilderService>();
+        services.AddScoped<ISkillMatchCandidateFilter, SkillMatchCandidateFilter>();
+        services.AddScoped<ISkillMatchRanker, SkillMatchRanker>();
+        services.AddScoped<IProjectHealthResourceFilter, ProjectHealthResourceFilter>();
         services.AddScoped<IAiIntegrationService, AiIntegrationService>();
         services.AddScoped<ILlmClient, GeminiClient>();
         services.AddScoped<ILlmClient, GroqClient>();

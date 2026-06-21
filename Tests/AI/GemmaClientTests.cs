@@ -63,7 +63,7 @@ public class GemmaClientTests : IDisposable
     public async Task GenerateCompletionAsync_SendsEmptyApiKeyHeader_WhenKeyNotConfigured()
     {
         // Arrange
-        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(string.Empty);
         _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
             .ReturnsAsync((SystemConfiguration?)null);
@@ -86,7 +86,7 @@ public class GemmaClientTests : IDisposable
     public async Task GenerateCompletionAsync_SendsDecryptedApiKeyHeader_WhenKeyConfigured()
     {
         // Arrange
-        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync("ollama-secret");
         _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
             .ReturnsAsync((SystemConfiguration?)null);
@@ -103,7 +103,7 @@ public class GemmaClientTests : IDisposable
     public async Task GenerateCompletionAsync_UsesConfiguredModel_WhenSetInSystemConfig()
     {
         // Arrange
-        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma, It.IsAny<CancellationToken>()))
+        _apiKeyResolverMock.Setup(r => r.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(string.Empty);
         _systemConfigRepoMock.Setup(r => r.GetByKeyAsync(ConfigKeys.LlmModelGemma, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SystemConfiguration { ConfigKey = ConfigKeys.LlmModelGemma, ConfigValue = "custom-gemma-model" });

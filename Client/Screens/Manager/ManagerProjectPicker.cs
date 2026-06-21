@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.ManagerProjects;
@@ -37,10 +38,10 @@ internal static class ManagerProjectPicker
                 continue;
             }
 
-            if (string.Equals(input, "B", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(input, MenuChoices.Back, StringComparison.OrdinalIgnoreCase))
                 return null;
 
-            if (input == "0")
+            if (input == MenuChoices.Exit)
             {
                 DisplayProjectList(projects);
                 continue;

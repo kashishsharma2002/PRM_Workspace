@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Timesheets;
@@ -28,41 +29,38 @@ public static class EmployeeMenuScreen
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            if (choice == MenuChoices.Exit)
             {
-                if (!isFrozen && choice == "1")
+                SessionStore.Clear();
+                clients.SetToken(null);
+                ConsoleHelper.PrintSuccess("Logged out.");
+                return false;
+            }
+
+            if (!await ScreenRunner.TryRunMenuActionAsync(async () =>
+            {
+                if (!isFrozen && choice == MenuChoices.One)
                 {
                     var defaultWeek = reminder?.ShowReminder == true ? reminder.WeekStartDate : (DateOnly?)null;
                     await SubmitTimesheetScreen.RunAsync(clients, defaultWeek);
-                    continue;
+                    return;
                 }
 
-                if (choice == (isFrozen ? "1" : "2"))
+                if (choice == (isFrozen ? MenuChoices.One : MenuChoices.Two))
                 {
                     await ViewTimesheetsScreen.RunAsync(clients);
-                    continue;
+                    return;
                 }
 
-                if (choice == (isFrozen ? "2" : "3"))
+                if (choice == (isFrozen ? MenuChoices.Two : MenuChoices.Three))
                 {
                     await ViewAllocationsScreen.RunAsync(clients);
-                    continue;
-                }
-
-                if (choice == "0")
-                {
-                    SessionStore.Clear();
-                    clients.SetToken(null);
-                    ConsoleHelper.PrintSuccess("Logged out.");
-                    return false;
+                    return;
                 }
 
                 ConsoleHelper.PrintError("Invalid option.");
-            }
-            catch (SessionExpiredException)
-            {
+            }))
                 return false;
-            }
         }
     }
 

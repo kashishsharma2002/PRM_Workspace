@@ -2,13 +2,14 @@ namespace Server.Services.Ai;
 
 using Server.Common;
 using Server.Common.Ai;
+using Server.Services.Ai.Abstractions;
 
-public static class AiPromptBuilder
+public class AiPromptBuilderService : IAiPromptBuilder
 {
     private const string DefaultSkillMatchRequirement =
         "Find the best matching resources based on skills required for this project.";
 
-    public static string BuildRiskSummaryPrompt(long projectId, string jsonContext) => $@"
+    public string BuildRiskSummaryPrompt(long projectId, string jsonContext) => $@"
 You are an AI Risk Analysis Assistant for the PRM Platform.
 Analyze the following project state context provided in JSON format:
 
@@ -30,7 +31,7 @@ You MUST respond strictly with a valid JSON block containing the properties belo
 }}
 ";
 
-    public static string BuildSkillMatchPrompt(long projectId, string? requirement, string jsonContext) => $@"
+    public string BuildSkillMatchPrompt(long projectId, string? requirement, string jsonContext) => $@"
 You are an AI Resource Matching Assistant for the PRM Platform.
 You need to match employees from the organization against the project requirements.
 
@@ -41,10 +42,11 @@ Database State Context (JSON Format):
 {jsonContext}
 
 Tasks:
-1. Review the list of candidate employees, their skills, and remaining capacity (remainingCapacityPercentage).
-2. Filter and rank the candidates who best match the project description or the manager's requirement.
-3. Prefer candidates with higher remaining capacity when skills are comparable.
-4. For each match, provide the employee's name, the primary matching skill name, a match score between 0 and 100, and a brief reason.
+1. Review the list of candidate employees, their skills (including category), and remaining capacity (remainingCapacityPercentage).
+2. Only return employees from the candidates list whose skills genuinely match the requirement or project description.
+3. Use the exact skill name from the candidate profile in skillName (do not invent skills).
+4. Prefer candidates with higher remaining capacity when skills are comparable.
+5. For each match, provide the employee's name, the primary matching skill name, a match score between 0 and 100, and a brief reason.
 
 Output Format:
 You MUST respond strictly with a valid JSON block containing the properties below and no other conversational wrapper or markdown:
@@ -61,7 +63,7 @@ You MUST respond strictly with a valid JSON block containing the properties belo
 }}
 ";
 
-    public static string BuildAtRiskSkillMatchPrompt(long projectId, string? requirement, string jsonContext) => $@"
+    public string BuildAtRiskSkillMatchPrompt(long projectId, string? requirement, string jsonContext) => $@"
 You are an AI Resource Matching Assistant for the PRM Platform.
 A project has turned RED (at risk). Suggest additional resources who are NOT already on this project.
 
@@ -96,7 +98,7 @@ You MUST respond strictly with a valid JSON block containing the properties belo
 }}
 ";
 
-    public static string BuildOrganizationalSkillMatchPrompt(string? requirement, string jsonContext) => $@"
+    public string BuildOrganizationalSkillMatchPrompt(string? requirement, string jsonContext) => $@"
 You are an AI Resource Matching Assistant for the PRM Platform.
 You need to match employees across the entire organization against the manager's requirement.
 
@@ -107,10 +109,11 @@ Database State Context (JSON Format):
 {jsonContext}
 
 Tasks:
-1. Review the list of candidate employees, their skills, and remaining capacity (remainingCapacityPercentage).
-2. Filter and rank the candidates who best match the manager's requirement.
-3. Prefer candidates with higher remaining capacity when skills are comparable.
-4. For each match, provide the employee's name, the primary matching skill name, a match score between 0 and 100, and a brief reason.
+1. Review the list of candidate employees, their skills (including category), and remaining capacity (remainingCapacityPercentage).
+2. Only return employees from the candidates list whose skills genuinely match the requirement.
+3. Use the exact skill name from the candidate profile in skillName (do not invent skills).
+4. Prefer candidates with higher remaining capacity when skills are comparable.
+5. For each match, provide the employee's name, the primary matching skill name, a match score between 0 and 100, and a brief reason.
 
 Output Format:
 You MUST respond strictly with a valid JSON block containing the properties below and no other conversational wrapper or markdown:
@@ -127,7 +130,7 @@ You MUST respond strictly with a valid JSON block containing the properties belo
 }}
 ";
 
-    public static string BuildTeamBuilderPrompt(string requirement, string jsonContext) => $@"
+    public string BuildTeamBuilderPrompt(string requirement, string jsonContext) => $@"
 You are an AI Team Builder Assistant for the PRM Platform.
 The manager describes an entire project team in one natural-language requirement.
 You must parse every role from the requirement and fill each role in a single pass.
@@ -200,7 +203,7 @@ You MUST respond strictly with a valid JSON block and no other conversational wr
 }}
 ";
 
-    public static string BuildTeamBuilderRepairPrompt(string requirement, string previousResponse) => $@"
+    public string BuildTeamBuilderRepairPrompt(string requirement, string previousResponse) => $@"
 Your previous response was invalid or incomplete JSON and could not be parsed.
 
 Manager's Team Requirement:

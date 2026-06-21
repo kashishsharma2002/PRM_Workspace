@@ -11,4 +11,7 @@ public static class EmailDefaults
 
     public const int DefaultSmtpPort = 587;
     public const string DefaultFromName = "PRM Notifications";
+
+    public const int MaxMilestonesInHealthEmail = 8;
+    public const int MaxResourceRecommendationsInHealthEmail = 5;
 }

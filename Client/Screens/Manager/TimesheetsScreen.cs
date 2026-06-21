@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Timesheets;
@@ -6,43 +7,35 @@ namespace Client.Screens.Manager;
 
 public static class TimesheetsScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        try
-        {
-            while (true)
-            {
-                ConsoleHelper.PrintHeader("Timesheets — My Team");
-                Console.WriteLine("1. View Team Timesheets");
-                Console.WriteLine("2. Restore Frozen Timesheet Access");
-                Console.WriteLine("0. Back");
-                ConsoleHelper.PrintDivider();
-                Console.Write("Enter option: ");
-                var choice = Console.ReadLine()?.Trim();
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(() => RunMenuAsync(clients));
 
-                switch (choice)
-                {
-                    case "1":
-                        await ViewTeamTimesheetsAsync(clients);
-                        break;
-                    case "2":
-                        await RestoreFrozenTimesheetsAsync(clients);
-                        break;
-                    case "0":
-                        return;
-                    default:
-                        ConsoleHelper.PrintError("Invalid option.");
-                        break;
-                }
+    private static async Task RunMenuAsync(AppClients clients)
+    {
+        while (true)
+        {
+            ConsoleHelper.PrintHeader("Timesheets — My Team");
+            Console.WriteLine("1. View Team Timesheets");
+            Console.WriteLine("2. Restore Frozen Timesheet Access");
+            Console.WriteLine("0. Back");
+            ConsoleHelper.PrintDivider();
+            Console.Write("Enter option: ");
+            var choice = Console.ReadLine()?.Trim();
+
+            switch (choice)
+            {
+                case MenuChoices.One:
+                    await ViewTeamTimesheetsAsync(clients);
+                    break;
+                case MenuChoices.Two:
+                    await RestoreFrozenTimesheetsAsync(clients);
+                    break;
+                case MenuChoices.Exit:
+                    return;
+                default:
+                    ConsoleHelper.PrintError("Invalid option.");
+                    break;
             }
-        }
-        catch (SessionExpiredException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
         }
     }
 
@@ -51,28 +44,21 @@ public static class TimesheetsScreen
         while (true)
         {
             ConsoleHelper.PrintHeader("View Team Timesheets");
-            Console.WriteLine("Filter by week (DD-MM-YYYY) or press Enter for current week:");
-            Console.Write("Week: ");
+            Console.WriteLine("Enter any date in the week (DD-MM-YYYY), or press Enter for the most recent completed week.");
+            Console.WriteLine("Timesheets are grouped by the Monday that starts each week.");
+            Console.Write("Week date: ");
             var weekInput = Console.ReadLine();
 
-            DateOnly weekStart;
-            if (string.IsNullOrWhiteSpace(weekInput))
-            {
-                weekStart = DateInputHelper.GetLastMonday();
-            }
-            else if (!DateInputHelper.TryParseWeekStart(weekInput, out weekStart, out var dateError))
+            if (!DateInputHelper.TryParseWeekStart(weekInput, out var weekStart, out var dateError))
             {
                 ConsoleHelper.PrintError(dateError ?? "Invalid week date.");
-                return;
+                continue;
             }
 
             var response = await clients.Manager.GetTeamTimesheetsAsync(weekStart);
 
-            if (response is null)
-            {
-                ConsoleHelper.PrintError("Failed to load team timesheets.");
+            if (!ApiLoadHelper.RequireLoaded(response, "Failed to load team timesheets."))
                 return;
-            }
 
             ConsoleHelper.PrintDivider();
             Console.WriteLine($"Week: {DateInputHelper.FormatDisplay(response.WeekStartDate)}");
@@ -87,7 +73,7 @@ public static class TimesheetsScreen
             {
                 foreach (var row in response.Rows)
                 {
-                    var status = row.Status == "MISSED" ? $"{row.Status} ⚠" : row.Status;
+                    var status = row.Status == TimesheetStatusConstants.Missed ? $"{row.Status} ⚠" : row.Status;
                     var idDisplay = row.TimesheetId?.ToString() ?? "-";
                     Console.WriteLine(
                         $"{idDisplay,-8}{row.EmployeeName,-18}{row.ProjectName,-18}{row.HoursLogged,4:0.#}   {status}");
@@ -98,7 +84,7 @@ public static class TimesheetsScreen
             Console.Write("[V] View timesheet detail  [B] Back — choice: ");
             var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-            if (choice == "B")
+            if (choice == MenuChoices.Back)
                 return;
 
             if (choice != "V")
@@ -125,11 +111,8 @@ public static class TimesheetsScreen
             ConsoleHelper.PrintHeader("Restore Frozen Timesheet Access");
 
             var response = await clients.Manager.GetTeamTimesheetsAsync(null);
-            if (response is null)
-            {
-                ConsoleHelper.PrintError("Failed to load team data.");
+            if (!ApiLoadHelper.RequireLoaded(response, "Failed to load team data."))
                 return;
-            }
 
             var frozenEmployees = response.FrozenEmployees;
 
@@ -154,7 +137,7 @@ public static class TimesheetsScreen
             Console.Write("[R] Restore employee  [B] Back — choice: ");
             var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-            if (choice == "B")
+            if (choice == MenuChoices.Back)
                 return;
 
             if (choice != "R")
@@ -176,15 +159,11 @@ public static class TimesheetsScreen
                 continue;
             }
 
-            try
+            await ScreenRunner.RunSafeAsync(async () =>
             {
                 await clients.Manager.RestoreTimesheetAccessAsync(employeeId);
                 ConsoleHelper.PrintSuccess("Timesheet access restored.");
-            }
-            catch (Exception ex)
-            {
-                ErrorDisplayHelper.HandleException(ex);
-            }
+            });
         }
     }
 
@@ -192,11 +171,8 @@ public static class TimesheetsScreen
     {
         var detail = await clients.Manager.GetTimesheetDetailAsync(timesheetId);
 
-        if (detail is null)
-        {
-            ConsoleHelper.PrintError("Timesheet not found.");
+        if (!ApiLoadHelper.RequireLoaded(detail, "Timesheet not found."))
             return;
-        }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"Employee: {detail.EmployeeName}");

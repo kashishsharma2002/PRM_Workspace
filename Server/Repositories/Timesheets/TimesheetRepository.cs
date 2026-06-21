@@ -20,9 +20,11 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             cancellationToken);
 
     public Task<Timesheet?> GetByEmployeeAndWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default) =>
-        context.Timesheets.FirstOrDefaultAsync(
-            t => t.ResourceProfileId == employeeId && t.WeekStartDate == weekStart,
-            cancellationToken);
+        context.Timesheets
+            .AsTracking()
+            .FirstOrDefaultAsync(
+                t => t.ResourceProfileId == employeeId && t.WeekStartDate == weekStart,
+                cancellationToken);
 
     public async Task<IReadOnlyList<long>> GetEmployeeIdsWithTimesheetForWeekAsync(
         IEnumerable<long> employeeIds,

@@ -9,8 +9,6 @@ public class PrmDbContext(DbContextOptions<PrmDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
-    public DbSet<Permission> Permissions => Set<Permission>();
-    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<ResourceProfile> ResourceProfiles => Set<ResourceProfile>();
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<UserSkill> UserSkills => Set<UserSkill>();

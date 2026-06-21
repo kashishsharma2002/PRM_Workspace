@@ -82,7 +82,8 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         [FromBody] AddSkillRequestDto request,
         CancellationToken cancellationToken)
     {
-        await employeeService.AddSkillAsync(id, request, cancellationToken);
+        var actorUserId = GetActorUserId();
+        await employeeService.AddSkillAsync(actorUserId, id, request, cancellationToken);
         return Ok(ApiResponse<object>.Ok(new { }, "Skill added."));
     }
 
@@ -94,7 +95,8 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         [FromBody] UpdateSkillProficiencyRequestDto request,
         CancellationToken cancellationToken)
     {
-        await employeeService.UpdateSkillProficiencyAsync(id, skillId, request, cancellationToken);
+        var actorUserId = GetActorUserId();
+        await employeeService.UpdateSkillProficiencyAsync(actorUserId, id, skillId, request, cancellationToken);
         return Ok(ApiResponse<object>.Ok(new { }, "Skill proficiency updated."));
     }
 
@@ -105,7 +107,8 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         long skillId,
         CancellationToken cancellationToken)
     {
-        await employeeService.RemoveSkillAsync(id, skillId, cancellationToken);
+        var actorUserId = GetActorUserId();
+        await employeeService.RemoveSkillAsync(actorUserId, id, skillId, cancellationToken);
         return Ok(ApiResponse<object>.Ok(new { }, "Skill removed."));
     }
 
@@ -116,7 +119,8 @@ public class EmployeeController(IEmployeeService employeeService) : ControllerBa
         [FromBody] AssignManagerRequestDto request,
         CancellationToken cancellationToken)
     {
-        await employeeService.AssignManagerAsync(id, request, cancellationToken);
+        var actorUserId = GetActorUserId();
+        await employeeService.AssignManagerAsync(actorUserId, id, request, cancellationToken);
         return Ok(ApiResponse<object>.Ok(new { }, "Manager assigned."));
     }
 

@@ -156,10 +156,12 @@ public class UserServiceOperationsTests
         };
         _userRepoMock.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(users);
-        _roleRepoMock.Setup(r => r.GetRoleNameForUserAsync(10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("EMPLOYEE");
-        _roleRepoMock.Setup(r => r.GetRoleNameForUserAsync(20, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("MANAGER");
+        _roleRepoMock.Setup(r => r.GetRoleNamesForUsersAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, string>
+            {
+                [10] = "EMPLOYEE",
+                [20] = "MANAGER"
+            });
 
         // Act
         var result = await _userService.GetAllUsersAsync();

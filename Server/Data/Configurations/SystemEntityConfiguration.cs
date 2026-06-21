@@ -58,6 +58,7 @@ public static class SystemEntityConfiguration
             entity.Property(e => e.NewValues).HasColumnName("new_values").HasColumnType("text");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.CorrelationId).HasColumnName("correlation_id").HasMaxLength(100);
+            entity.Property(e => e.Summary).HasColumnName("summary").HasColumnType("text");
 
             entity.HasOne<User>()
                 .WithMany()

@@ -24,6 +24,7 @@ public partial class ProjectService
             {
                 Id = p.Id,
                 ProjectName = p.ProjectName,
+                StartDate = p.StartDate,
                 EndDate = p.EndDate,
                 HealthStatus = p.HealthStatus,
                 ProjectStatus = p.ProjectStatus
@@ -99,7 +100,7 @@ public partial class ProjectService
         var milestones = await milestoneRepository.GetByProjectIdsAsync(projectIds, cancellationToken);
         var milestonesByProject = milestones.GroupBy(m => m.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
 
-        var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
+        var maxWeeklyHours = await systemConfigService.GetMaxWeeklyHoursAsync(cancellationToken);
         var allocations = await allocationRepository.GetAllActiveForWeekAsync(lastWeek, weekEnd, cancellationToken);
         var allocationsByProject = allocations.GroupBy(a => a.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
         var loggedHoursByProject = await timesheetRepository.GetLoggedHoursByProjectForWeekAsync(lastWeek, cancellationToken);
@@ -164,7 +165,7 @@ public partial class ProjectService
         }
 
         var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
-        var maxWeeklyHours = await GetMaxWeeklyHoursAsync(cancellationToken);
+        var maxWeeklyHours = await systemConfigService.GetMaxWeeklyHoursAsync(cancellationToken);
         var employeeIds = allocations.Select(a => a.ResourceProfileId).Distinct().ToList();
         var timesheets = employeeIds.Count > 0
             ? await timesheetRepository.GetByEmployeeIdsAndWeekAsync(employeeIds, lastWeek, cancellationToken)
@@ -190,14 +191,5 @@ public partial class ProjectService
         }
 
         return flags.Distinct().ToList();
-    }
-
-    private async Task<decimal> GetMaxWeeklyHoursAsync(CancellationToken cancellationToken)
-    {
-        var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
-        if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
-            return TimesheetDefaults.DefaultMaxWeeklyHours;
-
-        return maxHours;
     }
 }

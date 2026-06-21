@@ -5,49 +5,33 @@ namespace Client.Screens.Admin;
 
 public static class CreateProjectScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Create Project");
-
-        var name = FormInputHelper.PromptRequired("Project Name");
-        Console.Write("Description         : ");
-        var description = Console.ReadLine()?.Trim();
-
-        var startDate = FormInputHelper.PromptDateNotBeforeToday("Start Date");
-        var endDate = FormInputHelper.PromptDate("End Date");
-
-        while (endDate <= startDate)
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError($"End date must be after start date.");
-            endDate = FormInputHelper.PromptDate("End Date");
-        }
+            ConsoleHelper.PrintHeader("Create Project");
 
-        Console.WriteLine("Status              : (1) PLANNED  (2) ACTIVE  (3) ON_HOLD");
-        Console.Write("Select status [1-3]: ");
-        var status = Console.ReadLine()?.Trim() switch
-        {
-            "1" => "PLANNED",
-            "2" => "ACTIVE",
-            "3" => "ON_HOLD",
-            _ => string.Empty
-        };
+            var name = FormInputHelper.PromptRequired("Project Name");
+            Console.Write("Description         : ");
+            var description = Console.ReadLine()?.Trim();
 
-        var managerId = FormInputHelper.PromptId("Assign Manager (User ID)");
-        var storyPoints = FormInputHelper.PromptInt("Total Story Points", minValue: 0);
+            var startDate = FormInputHelper.PromptDateNotBeforeToday("Start Date");
+            var endDate = FormInputHelper.PromptDate("End Date");
 
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            ConsoleHelper.PrintError("Status is required.");
-            return;
-        }
+            while (endDate <= startDate)
+            {
+                ConsoleHelper.PrintError($"End date must be after start date.");
+                endDate = FormInputHelper.PromptDate("End Date");
+            }
 
-        ConsoleHelper.PrintDivider();
-        Console.Write("[S] Save  [B] Back — choice: ");
-        if (Console.ReadLine()?.Trim().ToUpperInvariant() != "S")
-            return;
+            var status = ProjectStatusInputHelper.PromptCreateStatus();
 
-        try
-        {
+            var managerId = FormInputHelper.PromptId("Assign Manager (User ID)");
+            var storyPoints = FormInputHelper.PromptInt("Total Story Points", minValue: 0);
+
+            ConsoleHelper.PrintDivider();
+            if (!FormInputHelper.ConfirmSave())
+                return;
+
             var result = await clients.Admin.CreateProjectAsync(new CreateProjectRequest
             {
                 ProjectName = name,
@@ -61,8 +45,5 @@ public static class CreateProjectScreen
 
             if (result is not null)
                 ConsoleHelper.PrintSuccess($"Project created ({result.ProjectCode}).");
-        }
-        catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
-    }
+        });
 }

@@ -1,12 +1,29 @@
+using Microsoft.Extensions.Logging;
 using Server.Common;
 using Server.Common.Allocations;
+using Server.Common.Audit;
 using Server.Common.Errors;
 using Server.Exceptions;
 using Server.Models.DTOs.Employees;
+using Server.Repositories.Allocations;
+using Server.Repositories.Employees;
+using Server.Repositories.Projects;
+using Server.Repositories.Timesheets;
+using Server.Repositories.Users;
+using Server.Services.Shared;
 
 namespace Server.Services.Employees;
 
-public partial class EmployeeService
+public class EmployeeTeamService(
+    IEmployeeRepository employeeRepository,
+    IUserRepository userRepository,
+    ISkillRepository skillRepository,
+    IEmployeeSkillRepository employeeSkillRepository,
+    IAllocationRepository allocationRepository,
+    IProjectRepository projectRepository,
+    ITimesheetRepository timesheetRepository,
+    IAuditService auditService,
+    ILogger<EmployeeTeamService> logger) : IEmployeeTeamService
 {
     public async Task<TeamDashboardDto> GetTeamDashboardAsync(
         long managerUserId,
@@ -95,34 +112,14 @@ public partial class EmployeeService
             ?? throw new NotFoundAppException("Linked user not found.");
 
         var profileSkills = await employeeSkillRepository.GetByUserIdAsync(profile.UserId, cancellationToken);
-        var skillDtos = new List<EmployeeSkillDto>();
-        foreach (var ps in profileSkills)
-        {
-            var skill = await skillRepository.GetByIdAsync(ps.SkillId, cancellationToken);
-            if (skill is null) continue;
-            skillDtos.Add(new EmployeeSkillDto
-            {
-                SkillId = skill.Id,
-                SkillName = skill.SkillName,
-                Category = skill.Category,
-                ProficiencyLevel = ps.ProficiencyLevel
-            });
-        }
+        var skillIds = profileSkills.Select(ps => ps.SkillId).Distinct().ToList();
+        var skillsById = await skillRepository.GetByIdsAsync(skillIds, cancellationToken);
+        var skillDtos = EmployeeDtoMapper.MapSkills(profileSkills, skillsById);
 
         var activeAllocations = await allocationRepository.GetActiveByEmployeeIdAsync(employeeId, cancellationToken);
-        var allocationDtos = new List<ActiveAllocationDto>();
-        foreach (var allocation in activeAllocations)
-        {
-            var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
-            allocationDtos.Add(new ActiveAllocationDto
-            {
-                AllocationId = allocation.Id,
-                ProjectName = project?.ProjectName ?? "Unknown",
-                AllocationPercentage = allocation.AllocationPercentage,
-                AllocationStartDate = allocation.AllocationStartDate,
-                AllocationEndDate = allocation.AllocationEndDate
-            });
-        }
+        var projectIds = activeAllocations.Select(a => a.ProjectId).Distinct().ToList();
+        var projectsById = await projectRepository.GetByIdsAsync(projectIds, cancellationToken);
+        var allocationDtos = EmployeeDtoMapper.MapActiveAllocations(activeAllocations, projectsById);
 
         var totalUtilization = activeAllocations.Sum(a => a.AllocationPercentage);
         var sinceDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7 * AllocationConstants.RecentActivityWeeks));
@@ -142,5 +139,41 @@ public partial class EmployeeService
             ActiveAllocations = allocationDtos,
             RecentActivityTags = tagNames
         };
+    }
+
+    public async Task RestoreTimesheetAccessAsync(
+        long managerUserId,
+        long employeeId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await employeeRepository.GetByIdAsync(employeeId, cancellationToken)
+            ?? throw new NotFoundAppException("Employee not found.", ErrorCodes.EmployeeNotFound);
+
+        if (profile.ManagerId != managerUserId)
+            throw new ForbiddenAppException("Employee is not on your team.", ErrorCodes.EmployeeNotOnTeam);
+
+        if (!profile.IsTimesheetFrozen)
+            throw new ValidationAppException("Timesheet access is not frozen for this employee.");
+
+        var user = await userRepository.GetByIdAsync(profile.UserId, cancellationToken);
+        var employeeName = user?.FullName ?? $"Employee {employeeId}";
+
+        profile.IsTimesheetFrozen = false;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await employeeRepository.UpdateAsync(profile, cancellationToken);
+        await employeeRepository.SaveChangesAsync(cancellationToken);
+
+        await auditService.LogUpdateAsync(
+            managerUserId,
+            AuditEntityConstants.ResourceProfiles,
+            profile.Id,
+            new { is_timesheet_frozen = true },
+            new { is_timesheet_frozen = false, employee = employeeName, restored_by_manager = managerUserId },
+            cancellationToken);
+
+        logger.LogInformation(
+            "Timesheet access restored for employee {EmployeeId} by manager {ManagerUserId}",
+            employeeId,
+            managerUserId);
     }
 }

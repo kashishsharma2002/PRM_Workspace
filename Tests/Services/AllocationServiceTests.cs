@@ -84,12 +84,21 @@ public class AllocationServiceTests
 
         _allocationRepoMock.Setup(r => r.GetAllAsync(null, null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(allocations);
-        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = 101 });
-        _userRepoMock.Setup(r => r.GetByIdAsync(101, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = 101, FullName = _employeeFullName });
-        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Project { Id = _projectId, ProjectName = _projectName });
+        _employeeRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, ResourceProfile>
+            {
+                [_employeeId] = new ResourceProfile { Id = _employeeId, UserId = 101 }
+            });
+        _userRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, User>
+            {
+                [101] = new User { Id = 101, FullName = _employeeFullName }
+            });
+        _projectRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, Project>
+            {
+                [_projectId] = new Project { Id = _projectId, ProjectName = _projectName }
+            });
 
         // Act
         var result = await _allocationService.GetAllAllocationsAsync(null, null, null);
