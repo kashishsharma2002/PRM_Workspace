@@ -133,3 +133,14 @@ PRMPlatform.sln
 ## Tech Stack
 
 .NET 10 · ASP.NET Core · Entity Framework Core · SQL Server · JWT · FluentValidation · BCrypt · MailKit · Polly · xUnit · Moq
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [API Reference](docs/Specs/API_REFERENCE.md) | All 55 endpoints with auth, payloads, and error codes |
+| [Architecture](docs/Specs/Architecture.md) | Server structure, patterns, scheduler |
+| [BRD](docs/Specs/PRM_BRD_V4.md) | Business requirements and console screens |
+| [ER Diagram](docs/Diagrams/erDiagram.md) | Database entity relationships |
