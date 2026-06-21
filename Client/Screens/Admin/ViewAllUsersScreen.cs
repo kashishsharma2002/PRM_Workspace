@@ -29,7 +29,7 @@ public static class ViewAllUsersScreen
             Console.Write("[R] Reactivate a user  [B] Back — choice: ");
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-            if (action == "R")
+            if (action == MenuChoices.Refresh)
                 await ReactivateUserAsync(clients, list);
         });
 

@@ -94,7 +94,7 @@ public static class MyProjectsScreen
         if (choice == MenuChoices.Back)
             return;
 
-        if (choice == "A")
+        if (choice == MenuChoices.All)
         {
             Console.WriteLine("\nGenerating AI summary...");
             await ScreenRunner.RunSafeAsync(async () =>

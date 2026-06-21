@@ -26,14 +26,14 @@ public static class ViewTimesheetsScreen
         ConsoleHelper.PrintDivider();
         foreach (var item in timesheets)
         {
-            var statusDisplay = item.Status == "MISSED" ? $"{item.Status}    ⚠" : item.Status;
+            var statusDisplay = item.Status == TimesheetStatusConstants.Missed ? $"{item.Status}    ⚠" : item.Status;
             Console.WriteLine($"{item.Id,-8}{DateInputHelper.FormatDisplay(item.WeekStartDate),-14}{item.TotalHours,5:0.#} hrs    {statusDisplay}");
         }
 
         ConsoleHelper.PrintDivider();
         Console.Write("[V] View week details  [B] Back — choice: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
-        if (choice != "V")
+        if (choice != MenuChoices.View)
             return;
 
         Console.Write("Enter timesheet ID: ");

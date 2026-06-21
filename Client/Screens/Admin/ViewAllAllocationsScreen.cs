@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -13,7 +14,7 @@ public static class ViewAllAllocationsScreen
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
             string? query = null;
-            if (action == "F")
+            if (action == MenuChoices.Filter)
             {
                 Console.Write("Employee ID (blank for all): ");
                 var empInput = Console.ReadLine()?.Trim();

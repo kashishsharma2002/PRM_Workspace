@@ -6,8 +6,8 @@ namespace Client.Screens.Admin;
 
 public static class ManageEmployeeSkillsScreen
 {
-    private static readonly string[] Categories = ["BACKEND", "FRONTEND", "DEVOPS", "QA", "OTHER"];
-    private static readonly string[] Proficiencies = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
+    private static readonly string[] Categories = EmployeeConstants.SkillCategories;
+    private static readonly string[] Proficiencies = EmployeeConstants.ProficiencyLevels;
 
     public static Task RunAsync(AppClients clients) =>
         ScreenRunner.RunSafeAsync(async () =>
@@ -170,9 +170,9 @@ public static class ManageEmployeeSkillsScreen
 
     private static string FormatProficiency(string level) => level switch
     {
-        "BEGINNER" => "Beginner",
-        "INTERMEDIATE" => "Intermediate",
-        "ADVANCED" => "Advanced",
+        EmployeeConstants.ProficiencyBeginner => "Beginner",
+        EmployeeConstants.ProficiencyIntermediate => "Intermediate",
+        EmployeeConstants.ProficiencyAdvanced => "Advanced",
         _ => level
     };
 }

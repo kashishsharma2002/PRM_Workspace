@@ -56,7 +56,7 @@ public static class ResourceDashboardScreen
                     return;
                 }
 
-                if (choice != "D")
+                if (choice != MenuChoices.Details)
                 {
                     ConsoleHelper.PrintError("Invalid option.");
                     return;

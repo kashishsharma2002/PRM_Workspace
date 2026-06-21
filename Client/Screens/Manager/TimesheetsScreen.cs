@@ -87,7 +87,7 @@ public static class TimesheetsScreen
             if (choice == MenuChoices.Back)
                 return;
 
-            if (choice != "V")
+            if (choice != MenuChoices.View)
             {
                 ConsoleHelper.PrintError("Invalid option.");
                 continue;
@@ -140,7 +140,7 @@ public static class TimesheetsScreen
             if (choice == MenuChoices.Back)
                 return;
 
-            if (choice != "R")
+            if (choice != MenuChoices.Refresh)
             {
                 ConsoleHelper.PrintError("Invalid option.");
                 continue;

@@ -105,7 +105,7 @@ public static class SubmitTimesheetScreen
                     var tag = tags[tagNumber - 1];
                     selectedTagIds.Add(tag.Id);
 
-                    if (tag.TagCode == "OTHER")
+                    if (tag.TagCode == TimesheetStatusConstants.OtherTagCode)
                     {
                         Console.Write("Enter custom activity description: ");
                         customTagText = Console.ReadLine()?.Trim();

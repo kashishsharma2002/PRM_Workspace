@@ -42,7 +42,7 @@ public static class AiAssistantScreen
                 }
             });
 
-            if (choice == "4")
+            if (choice == MenuChoices.Four)
                 return;
         }
     }
@@ -86,7 +86,7 @@ public static class AiAssistantScreen
         Console.Write("[A] Go to Allocate Resource     [B] Back — choice: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-        if (choice == "A")
+        if (choice == MenuChoices.All)
             await AllocateResourceScreen.RunAsync(clients);
     }
 

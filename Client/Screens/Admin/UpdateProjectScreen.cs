@@ -78,7 +78,7 @@ public static class UpdateProjectScreen
                 MenuChoices.One => ProjectStatusConstants.Planned,
                 MenuChoices.Two => ProjectStatusConstants.Active,
                 MenuChoices.Three => ProjectStatusConstants.OnHold,
-                "4" => "COMPLETED",
+                MenuChoices.Four => ProjectStatusConstants.Completed,
                 "" => detail.ProjectStatus,
                 _ => detail.ProjectStatus
             };
