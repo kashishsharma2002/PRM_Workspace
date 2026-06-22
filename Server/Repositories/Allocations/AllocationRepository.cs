@@ -12,6 +12,18 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             .Where(a => a.ResourceProfileId == resourceProfileId && a.AllocationStatus == AllocationStatusConstants.Active)
             .ToListAsync(cancellationToken);
 
+    public Task<ProjectAllocation?> GetActiveByEmployeeAndProjectAsync(
+        long resourceProfileId,
+        long projectId,
+        CancellationToken cancellationToken = default) =>
+        context.ProjectAllocations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                a => a.ResourceProfileId == resourceProfileId
+                    && a.ProjectId == projectId
+                    && a.AllocationStatus == AllocationStatusConstants.Active,
+                cancellationToken);
+
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(
         IEnumerable<long> resourceProfileIds,
         CancellationToken cancellationToken = default)

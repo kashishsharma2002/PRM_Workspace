@@ -5,6 +5,10 @@ namespace Server.Repositories.Allocations;
 public interface IAllocationRepository
 {
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default);
+    Task<ProjectAllocation?> GetActiveByEmployeeAndProjectAsync(
+        long resourceProfileId,
+        long projectId,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(IEnumerable<long> resourceProfileIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdForWeekAsync(
         long resourceProfileId,
