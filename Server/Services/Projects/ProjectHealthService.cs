@@ -3,7 +3,7 @@ using Server.Common;
 using Server.Common.Emails;
 using Server.Common.Projects;
 using Server.Common.Timesheets;
-using Server.Models.DTOs.Ai;
+using Server.Models.DTOs.SkillMatching;
 using Server.Models.DTOs.Scheduler;
 using Server.Repositories.Allocations;
 using Server.Repositories.Emails;
@@ -12,8 +12,10 @@ using Server.Repositories.SystemConfig;
 using Server.Repositories.Timesheets;
 using Server.Repositories.Users;
 using Server.Scheduler;
-using Server.Services.Ai.Abstractions;
+using Server.Services.ProjectRisk.Abstractions;
+using Server.Services.SkillMatching.Abstractions;
 using Server.Services.Emails;
+using Server.Services.Projects.Abstractions;
 using Server.Services.SystemConfig;
 
 namespace Server.Services.Projects;
@@ -27,7 +29,9 @@ public class ProjectHealthService(
     IUserRepository userRepository,
     IEmailLogRepository emailLogRepository,
     IEmailService emailService,
-    IAiIntegrationService aiIntegrationService,
+    IProjectRiskInsightsService projectRiskInsightsService,
+    ISkillMatchingService skillMatchingService,
+    IProjectHealthFlagEvaluator projectHealthFlagEvaluator,
     ILogger<ProjectHealthService> logger) : IProjectHealthService
 {
     public async Task<SchedulerHealthResultDto> ProcessProjectHealthNotificationsAsync(
@@ -64,15 +68,14 @@ public class ProjectHealthService(
                 var expectedHours = projectAllocations.Sum(a => a.AllocationPercentage / 100m * maxWeeklyHours);
                 var loggedHours = loggedHoursByProject.GetValueOrDefault(project.Id, 0m);
 
-                var flags = HealthFlagEvaluator.EvaluateFlags(
+                var context = ProjectHealthEvaluationContext.Create(
                     project.EndDate,
                     projectMilestones,
                     expectedHours,
                     loggedHours,
-                    today,
-                    HealthThresholdDefaults.LowHoursRatio,
-                    HealthThresholdDefaults.ApproachingDeadlineDays);
-                var newHealth = HealthFlagEvaluator.MapToHealthStatus(flags);
+                    today);
+                var flags = projectHealthFlagEvaluator.EvaluateFlags(context);
+                var newHealth = projectHealthFlagEvaluator.MapToHealthStatus(flags);
 
                 if (!string.Equals(previousHealth, newHealth, StringComparison.OrdinalIgnoreCase))
                     await projectRepository.UpdateHealthStatusAsync(project.Id, newHealth, cancellationToken);
@@ -159,7 +162,7 @@ public class ProjectHealthService(
             ["ResourceList"] = resourceList
         };
 
-        var sent = await emailService.SendNotificationAsync(
+        var sendResult = await emailService.SendTemplatedEmailAsync(
             manager.Email,
             EmailTypeConstants.ProjectAtRisk,
             placeholders,
@@ -168,8 +171,8 @@ public class ProjectHealthService(
             cancellationToken);
 
         return new AtRiskNotificationResult(
-            EmailsSent: sent ? 1 : 0,
-            EmailsFailed: sent ? 0 : 1,
+            EmailsSent: sendResult.Success ? 1 : 0,
+            EmailsFailed: sendResult.Success ? 0 : 1,
             RiskAnalysesCompleted: riskAnalysisSucceeded ? 1 : 0,
             RiskAnalysesFailed: riskAnalysisSucceeded ? 0 : 1);
     }
@@ -205,7 +208,7 @@ public class ProjectHealthService(
     {
         try
         {
-            var risk = await aiIntegrationService.GetRiskSummaryAsync(
+            var risk = await projectRiskInsightsService.GetRiskSummaryAsync(
                 project.ManagerUserId, project.Id, cancellationToken);
 
             if (risk.Recommendations.Count == 0)
@@ -227,7 +230,7 @@ public class ProjectHealthService(
     {
         try
         {
-            var matches = await aiIntegrationService.GetSkillMatchAsync(
+            var matches = await skillMatchingService.GetSkillMatchAsync(
                 project.ManagerUserId,
                 project.Id,
                 "Recommend unallocated available resources to mitigate project risks.",

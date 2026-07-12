@@ -33,7 +33,35 @@ public class EmailServiceTests
     }
 
     [Fact]
-    public async Task SendNotificationAsync_RetriesOnFailure_AndLogsFinalOutcome()
+    public async Task SendEmailAsync_RetriesOnFailure_AndLogsFinalOutcome()
+    {
+        var attempts = 0;
+        _providerMock.Setup(p => p.SendEmailAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                attempts++;
+                return new EmailResult
+                {
+                    Success = attempts >= 2,
+                    ProcessingDuration = TimeSpan.FromMilliseconds(10)
+                };
+            });
+
+        var result = await _emailService.SendEmailAsync(
+            "user@example.com",
+            "Test Subject",
+            "Test Body");
+
+        Assert.True(result.Success);
+        Assert.True(attempts >= 2);
+        _logRepoMock.Verify(r => r.AddAsync(
+            It.Is<EmailLog>(l => l.Status == EmailStatusConstants.Sent && l.EmailType == EmailTypeConstants.Direct),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _logRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendTemplatedEmailAsync_RetriesOnFailure_AndLogsFinalOutcome()
     {
         _templateRepoMock.Setup(r => r.GetByKeyAsync(EmailTypeConstants.TimesheetReminder1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmailTemplate
@@ -55,7 +83,7 @@ public class EmailServiceTests
                 };
             });
 
-        var success = await _emailService.SendNotificationAsync(
+        var result = await _emailService.SendTemplatedEmailAsync(
             "user@example.com",
             EmailTypeConstants.TimesheetReminder1,
             new Dictionary<string, string>
@@ -65,9 +93,25 @@ public class EmailServiceTests
             },
             "WeekEnding:2026-06-08");
 
-        Assert.True(success);
+        Assert.True(result.Success);
         Assert.True(attempts >= 2);
         _logRepoMock.Verify(r => r.AddAsync(It.Is<EmailLog>(l => l.Status == EmailStatusConstants.Sent), It.IsAny<CancellationToken>()), Times.Once);
         _logRepoMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendTemplatedEmailAsync_ReturnsFailure_WhenTemplateNotFound()
+    {
+        _templateRepoMock.Setup(r => r.GetByKeyAsync("MISSING", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EmailTemplate?)null);
+
+        var result = await _emailService.SendTemplatedEmailAsync(
+            "user@example.com",
+            "MISSING",
+            new Dictionary<string, string>());
+
+        Assert.False(result.Success);
+        Assert.Contains("not found", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        _providerMock.Verify(p => p.SendEmailAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

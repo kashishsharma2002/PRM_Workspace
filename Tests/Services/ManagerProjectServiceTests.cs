@@ -61,6 +61,7 @@ public class ManagerProjectServiceTests
             _employeeRepoMock.Object,
             _timesheetRepoMock.Object,
             _systemConfigServiceMock.Object,
+            ProjectHealthFlagEvaluatorTestHelper.CreateEvaluator(),
             _auditServiceMock.Object,
             _loggerMock.Object);
     }
@@ -117,6 +118,8 @@ public class ManagerProjectServiceTests
             .ReturnsAsync(new List<ProjectAllocation>());
         _systemConfigServiceMock.Setup(r => r.GetMaxWeeklyHoursAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(40m);
+        _timesheetRepoMock.Setup(r => r.GetLoggedHoursByProjectForWeekAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, decimal>());
 
         // Act
         var detail = await _projectService.GetManagerProjectDetailAsync(_managerAUserId, _managerAProjectId);

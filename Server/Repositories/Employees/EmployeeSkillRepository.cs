@@ -52,4 +52,22 @@ public class EmployeeSkillRepository(PrmDbContext context) : IEmployeeSkillRepos
         context.UserSkills.Remove(userSkill);
         return Task.CompletedTask;
     }
+
+    public async Task<IReadOnlyList<EmployeeSkillDetailProjection>> GetSkillDetailsByUserIdsAsync(
+        IEnumerable<long> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = userIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return await context.UserSkills
+            .Where(us => ids.Contains(us.UserId))
+            .Join(context.Skills, us => us.SkillId, s => s.Id, (us, s) => new EmployeeSkillDetailProjection(
+                us.UserId,
+                s.SkillName,
+                s.Category,
+                us.ProficiencyLevel))
+            .ToListAsync(cancellationToken);
+    }
 }

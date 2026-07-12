@@ -12,6 +12,7 @@ using Server.Repositories.SystemConfig;
 using Server.Repositories.Timesheets;
 using Server.Repositories.Users;
 using Server.Services.Compliance;
+using Server.Models.Emails;
 using Server.Services.Emails;
 using Server.Services.Shared;
 using Xunit;
@@ -86,7 +87,7 @@ public class TimesheetComplianceServiceTests
         await _service.ProcessTimesheetComplianceAsync();
 
         _emailServiceMock.Verify(
-            e => e.SendNotificationAsync(
+            e => e.SendTemplatedEmailAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<Dictionary<string, string>>(),
@@ -127,14 +128,14 @@ public class TimesheetComplianceServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        _emailServiceMock.Setup(e => e.SendNotificationAsync(
+        _emailServiceMock.Setup(e => e.SendTemplatedEmailAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<Dictionary<string, string>>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new EmailSendResult { Success = true });
 
         await _service.ProcessTimesheetComplianceAsync();
 

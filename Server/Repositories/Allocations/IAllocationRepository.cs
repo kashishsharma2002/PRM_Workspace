@@ -31,4 +31,10 @@ public interface IAllocationRepository
     Task UpdateAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default);
     Task AddAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ActiveAllocationWithProjectName>> GetActiveWithProjectNamesByProfileIdsAsync(
+        IEnumerable<long> resourceProfileIds,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ActiveAllocationWithEmployeeName>> GetActiveWithEmployeeNamesByProjectIdAsync(
+        long projectId,
+        CancellationToken cancellationToken = default);
 }

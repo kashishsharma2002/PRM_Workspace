@@ -376,7 +376,7 @@ sequenceDiagram
     participant ProjSvc as ProjectService
     participant TsSvc as TimesheetService
     participant StatusSvc as ResourceStatusService
-    participant Evaluator as HealthFlagEvaluator
+    participant Evaluator as ProjectHealthFlagEvaluator
     participant Threshold as HealthThresholdProvider
     participant ProjRepo as ProjectRepository
     participant TsRepo as TimesheetRepository
@@ -443,7 +443,7 @@ sequenceDiagram
     end
 ```
 
-**Key files:** `Server/Scheduler/BackgroundScheduler.cs`, `Server/Scheduler/HealthFlagEvaluator.cs`, `Server/Common/HealthThresholdDefaults.cs`
+**Key files:** `Server/Scheduler/BackgroundScheduler.cs`, `Server/Services/Projects/ProjectHealthFlagEvaluator.cs`, `Server/Common/HealthThresholdDefaults.cs`
 
 **Health threshold defaults:**
 

@@ -12,4 +12,7 @@ public interface IEmployeeRepository
     Task AddAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default);
     Task UpdateAsync(ResourceProfile resourceProfile, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ResourceProfile>> GetResourceProfilesByUserIdsAsync(
+        IEnumerable<long> userIds,
+        CancellationToken cancellationToken = default);
 }

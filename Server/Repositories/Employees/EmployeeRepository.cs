@@ -77,4 +77,17 @@ public class EmployeeRepository(PrmDbContext context) : IEmployeeRepository
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         context.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ResourceProfile>> GetResourceProfilesByUserIdsAsync(
+        IEnumerable<long> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = userIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return await context.ResourceProfiles
+            .Where(rp => ids.Contains(rp.UserId))
+            .ToListAsync(cancellationToken);
+    }
 }

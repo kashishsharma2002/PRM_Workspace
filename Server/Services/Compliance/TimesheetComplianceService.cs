@@ -139,7 +139,7 @@ public class TimesheetComplianceService(
         SchedulerComplianceResultDto result,
         CancellationToken cancellationToken)
     {
-        var sent = await emailService.SendNotificationAsync(
+        var sendResult = await emailService.SendTemplatedEmailAsync(
             recipient,
             emailType,
             placeholders,
@@ -147,7 +147,7 @@ public class TimesheetComplianceService(
             correlationId,
             cancellationToken);
 
-        if (sent)
+        if (sendResult.Success)
             result.EmailsSent++;
         else
             result.EmailsFailed++;

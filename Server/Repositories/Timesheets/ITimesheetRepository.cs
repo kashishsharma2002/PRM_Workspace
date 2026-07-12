@@ -32,4 +32,8 @@ public interface ITimesheetRepository
         DateOnly sinceDate,
         CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RecentProjectTimesheetHours>> GetRecentLoggedHoursByProjectIdAsync(
+        long projectId,
+        DateOnly sinceDate,
+        CancellationToken cancellationToken = default);
 }

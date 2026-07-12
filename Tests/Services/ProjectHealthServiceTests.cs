@@ -3,14 +3,17 @@ using Moq;
 using Server.Common;
 using Server.Common.Emails;
 using Server.Common.Projects;
-using Server.Models.DTOs.Ai;
+using Server.Models.DTOs.ProjectRisk;
+using Server.Models.DTOs.SkillMatching;
 using Server.Models.Entities;
 using Server.Repositories.Allocations;
 using Server.Repositories.Emails;
 using Server.Repositories.Projects;
 using Server.Repositories.Timesheets;
 using Server.Repositories.Users;
-using Server.Services.Ai.Abstractions;
+using Server.Services.ProjectRisk.Abstractions;
+using Server.Services.SkillMatching.Abstractions;
+using Server.Models.Emails;
 using Server.Services.Emails;
 using Server.Services.Projects;
 using Server.Services.SystemConfig;
@@ -27,7 +30,8 @@ public class ProjectHealthServiceTests
     private readonly Mock<IUserRepository> _userRepoMock = new();
     private readonly Mock<IEmailLogRepository> _emailLogRepoMock = new();
     private readonly Mock<IEmailService> _emailServiceMock = new();
-    private readonly Mock<IAiIntegrationService> _aiServiceMock = new();
+    private readonly Mock<IProjectRiskInsightsService> _projectRiskServiceMock = new();
+    private readonly Mock<ISkillMatchingService> _skillMatchingServiceMock = new();
 
     private readonly ProjectHealthService _service;
 
@@ -42,7 +46,9 @@ public class ProjectHealthServiceTests
             _userRepoMock.Object,
             _emailLogRepoMock.Object,
             _emailServiceMock.Object,
-            _aiServiceMock.Object,
+            _projectRiskServiceMock.Object,
+            _skillMatchingServiceMock.Object,
+            ProjectHealthFlagEvaluatorTestHelper.CreateEvaluator(),
             NullLogger<ProjectHealthService>.Instance);
     }
 
@@ -91,9 +97,9 @@ public class ProjectHealthServiceTests
         _emailLogRepoMock.Setup(r => r.WasSentForReferenceAsync(
                 It.IsAny<string>(), EmailTypeConstants.ProjectAtRisk, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        _aiServiceMock.Setup(a => a.GetRiskSummaryAsync(10, 2, It.IsAny<CancellationToken>()))
+        _projectRiskServiceMock.Setup(a => a.GetRiskSummaryAsync(10, 2, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiRiskSummaryResponseDto { Summary = "Risk", Recommendations = [] });
-        _aiServiceMock.Setup(a => a.GetSkillMatchAsync(
+        _skillMatchingServiceMock.Setup(a => a.GetSkillMatchAsync(
                 10,
                 2,
                 It.IsAny<string>(),
@@ -122,7 +128,7 @@ public class ProjectHealthServiceTests
             });
 
         Dictionary<string, string>? capturedPlaceholders = null;
-        _emailServiceMock.Setup(e => e.SendNotificationAsync(
+        _emailServiceMock.Setup(e => e.SendTemplatedEmailAsync(
                 It.IsAny<string>(),
                 EmailTypeConstants.ProjectAtRisk,
                 It.IsAny<Dictionary<string, string>>(),
@@ -131,7 +137,7 @@ public class ProjectHealthServiceTests
                 It.IsAny<CancellationToken>()))
             .Callback<string, string, Dictionary<string, string>, string, string, CancellationToken>(
                 (_, _, placeholders, _, _, _) => capturedPlaceholders = placeholders)
-            .ReturnsAsync(true);
+            .ReturnsAsync(new EmailSendResult { Success = true });
 
         await _service.ProcessProjectHealthNotificationsAsync();
 

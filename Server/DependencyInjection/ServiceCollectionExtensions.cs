@@ -69,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITemplateRenderingService, TemplateRenderingService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<ITimesheetComplianceService, TimesheetComplianceService>();
+        services.AddProjectHealth();
         services.AddScoped<IProjectHealthService, ProjectHealthService>();
         services.AddScoped<ISchedulerRunner, SchedulerRunner>();
         services.AddHostedService<BackgroundScheduler>();

@@ -18,7 +18,7 @@ global using Server.Repositories.Emails;
 global using Server.Services.Compliance;
 global using Server.Services.Emails;
 global using Server.Services.Users;
-global using Server.Services.Ai;
+global using Server.Services.TeamBuilder;
 global using Server.Validators.Employees;
 global using Server.Validators.Projects;
 global using Server.Validators.SystemConfig;

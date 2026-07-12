@@ -2,9 +2,9 @@ using Server.AI.Abstractions;
 using Server.AI.Configuration;
 using Server.AI.Infrastructure;
 using Server.AI.Providers;
-using Server.Repositories.Ai;
-using Server.Services.Ai;
-using Server.Services.Ai.Abstractions;
+using Server.Repositories.AiRequestLog;
+using Server.Services.TeamBuilder;
+using Server.Services.TeamBuilder.Abstractions;
 
 namespace Server.DependencyInjection;
 
@@ -14,19 +14,8 @@ public static class AiServiceCollectionExtensions
     {
         services.Configure<LlmSettings>(configuration.GetSection("LlmSettings"));
 
-        services.AddScoped<IAiContextRepository, AiContextRepository>();
-        services.AddScoped<IAiRequestLogRepository, AiRequestLogRepository>();
         services.AddScoped<ILlmConfigResolver, LlmConfigResolver>();
         services.AddScoped<ILlmApiKeyResolver, LlmApiKeyResolver>();
-        services.AddScoped<IAiContextBuilder, AiContextBuilder>();
-        services.AddScoped<IAiSkillMatchContextAssembler, AiSkillMatchContextAssembler>();
-        services.AddScoped<IAiResponseParser, AiResponseParser>();
-        services.AddScoped<ITeamBuilderResponseNormalizer, TeamBuilderResponseNormalizer>();
-        services.AddScoped<IAiPromptBuilder, AiPromptBuilderService>();
-        services.AddScoped<ISkillMatchCandidateFilter, SkillMatchCandidateFilter>();
-        services.AddScoped<ISkillMatchRanker, SkillMatchRanker>();
-        services.AddScoped<IProjectHealthResourceFilter, ProjectHealthResourceFilter>();
-        services.AddScoped<IAiIntegrationService, AiIntegrationService>();
         services.AddScoped<ILlmClient, GeminiClient>();
         services.AddScoped<ILlmClient, GroqClient>();
         services.AddScoped<ILlmClient, GemmaClient>();
@@ -50,6 +39,16 @@ public static class AiServiceCollectionExtensions
         {
             client.Timeout = httpTimeout;
         });
+
+        services.AddSkillMatching();
+        services.AddProjectRisk();
+
+        services.AddScoped<IAiRequestLogRepository, AiRequestLogRepository>();
+        services.AddScoped<ITeamBuilderContextBuilder, TeamBuilderContextBuilder>();
+        services.AddScoped<ITeamBuilderResponseParser, TeamBuilderResponseParser>();
+        services.AddScoped<ITeamBuilderPromptBuilder, TeamBuilderPromptBuilder>();
+        services.AddScoped<ITeamBuilderResponseNormalizer, TeamBuilderResponseNormalizer>();
+        services.AddScoped<ITeamBuilderService, TeamBuilderService>();
 
         return services;
     }

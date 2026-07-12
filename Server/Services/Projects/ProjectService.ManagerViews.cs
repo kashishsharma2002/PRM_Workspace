@@ -7,6 +7,7 @@ using Server.Models.DTOs.Projects;
 using Server.Models.DTOs.Scheduler;
 using Server.Models.Entities;
 using Server.Scheduler;
+using Server.Services.Projects.Abstractions;
 using Server.Services.Shared;
 
 namespace Server.Services.Projects;
@@ -72,8 +73,7 @@ public partial class ProjectService
             });
         }
 
-        var riskFlags = await BuildRiskFlagsAsync(
-            projectId, project.EndDate, milestoneDtos, allocations, cancellationToken);
+        var riskFlags = await EvaluateRiskFlagsAsync(projectId, project.EndDate, milestones, allocations, cancellationToken);
 
         return new ManagerProjectDetailDto
         {
@@ -117,15 +117,14 @@ public partial class ProjectService
                 var expectedHours = projectAllocations.Sum(a => a.AllocationPercentage / 100m * maxWeeklyHours);
                 var loggedHours = loggedHoursByProject.GetValueOrDefault(project.Id, 0m);
 
-                var flags = HealthFlagEvaluator.EvaluateFlags(
+                var context = ProjectHealthEvaluationContext.Create(
                     project.EndDate,
                     projectMilestones,
                     expectedHours,
                     loggedHours,
-                    today,
-                    HealthThresholdDefaults.LowHoursRatio,
-                    HealthThresholdDefaults.ApproachingDeadlineDays);
-                var healthStatus = HealthFlagEvaluator.MapToHealthStatus(flags);
+                    today);
+                var flags = projectHealthFlagEvaluator.EvaluateFlags(context);
+                var healthStatus = projectHealthFlagEvaluator.MapToHealthStatus(flags);
 
                 await projectRepository.UpdateHealthStatusAsync(project.Id, healthStatus, cancellationToken);
                 evaluatedCount++;
@@ -144,52 +143,27 @@ public partial class ProjectService
         };
     }
 
-    private async Task<List<string>> BuildRiskFlagsAsync(
+    private async Task<List<string>> EvaluateRiskFlagsAsync(
         long projectId,
         DateOnly endDate,
-        IReadOnlyList<ManagerProjectMilestoneDto> milestones,
+        IReadOnlyList<ProjectMilestone> milestones,
         IReadOnlyList<ProjectAllocation> allocations,
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var flags = new List<string>();
-
-        if (milestones.Any(m => m.IsOverdue))
-            flags.Add(ProjectConstants.FlagOverdueMilestone);
-
-        var daysUntilEnd = endDate.DayNumber - today.DayNumber;
-        if (daysUntilEnd < HealthThresholdDefaults.ApproachingDeadlineDays
-            && milestones.Any(m => m.MilestoneStatus != MilestoneStatusConstants.Done))
-        {
-            flags.Add(ProjectConstants.FlagApproachingDeadline);
-        }
-
         var lastWeek = WeekDateHelper.GetMostRecentCompletedWeekMonday();
         var maxWeeklyHours = await systemConfigService.GetMaxWeeklyHoursAsync(cancellationToken);
-        var employeeIds = allocations.Select(a => a.ResourceProfileId).Distinct().ToList();
-        var timesheets = employeeIds.Count > 0
-            ? await timesheetRepository.GetByEmployeeIdsAndWeekAsync(employeeIds, lastWeek, cancellationToken)
-            : null;
-        var timesheetLookup = timesheets != null
-            ? timesheets.ToDictionary(t => t.ResourceProfileId)
-            : new Dictionary<long, Timesheet>();
+        var expectedHours = allocations.Sum(a => a.AllocationPercentage / 100m * maxWeeklyHours);
+        var loggedHoursByProject = await timesheetRepository.GetLoggedHoursByProjectForWeekAsync(lastWeek, cancellationToken);
+        var loggedHours = loggedHoursByProject.GetValueOrDefault(projectId, 0m);
 
-        foreach (var allocation in allocations)
-        {
-            if (!timesheetLookup.TryGetValue(allocation.ResourceProfileId, out var timesheet)
-                || timesheet.Status != TimesheetConstants.StatusSubmitted)
-                continue;
+        var context = ProjectHealthEvaluationContext.Create(
+            endDate,
+            milestones,
+            expectedHours,
+            loggedHours,
+            today);
 
-            var lineItems = await timesheetRepository.GetLineItemsByTimesheetIdAsync(timesheet.Id, cancellationToken);
-            var projectHours = lineItems
-                .Where(li => li.ProjectId == projectId)
-                .Sum(li => li.HoursLogged);
-
-            var expectedHours = allocation.AllocationPercentage / 100m * maxWeeklyHours;
-            if (projectHours < expectedHours * HealthThresholdDefaults.LowHoursRatio)
-                flags.Add(ProjectConstants.FlagLowHours);
-        }
-
-        return flags.Distinct().ToList();
+        return projectHealthFlagEvaluator.EvaluateFlags(context);
     }
 }

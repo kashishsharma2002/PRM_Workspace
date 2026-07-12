@@ -63,6 +63,7 @@ public class ProjectServiceTests
             _employeeRepoMock.Object,
             _timesheetRepoMock.Object,
             _systemConfigServiceMock.Object,
+            ProjectHealthFlagEvaluatorTestHelper.CreateEvaluator(),
             _auditServiceMock.Object,
             _loggerMock.Object);
     }

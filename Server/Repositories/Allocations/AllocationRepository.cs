@@ -131,4 +131,37 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         context.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ActiveAllocationWithProjectName>> GetActiveWithProjectNamesByProfileIdsAsync(
+        IEnumerable<long> resourceProfileIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = resourceProfileIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return await context.ProjectAllocations
+            .Where(a => ids.Contains(a.ResourceProfileId) && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Join(context.Projects, a => a.ProjectId, p => p.Id, (a, p) => new ActiveAllocationWithProjectName(
+                a.ProjectId,
+                a.ResourceProfileId,
+                a.AllocationPercentage,
+                a.AllocationStartDate,
+                a.AllocationEndDate,
+                p.ProjectName))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ActiveAllocationWithEmployeeName>> GetActiveWithEmployeeNamesByProjectIdAsync(
+        long projectId,
+        CancellationToken cancellationToken = default) =>
+        await context.ProjectAllocations
+            .Where(a => a.ProjectId == projectId && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Join(context.ResourceProfiles, a => a.ResourceProfileId, rp => rp.Id, (a, rp) => new { a, rp })
+            .Join(context.Users, combined => combined.rp.UserId, u => u.Id, (combined, u) => new ActiveAllocationWithEmployeeName(
+                u.FullName,
+                combined.a.AllocationPercentage,
+                combined.a.AllocationStartDate,
+                combined.a.AllocationEndDate))
+            .ToListAsync(cancellationToken);
 }

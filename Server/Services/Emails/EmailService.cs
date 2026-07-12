@@ -28,23 +28,16 @@ public class EmailService(
         })
         .Build();
 
-    public async Task<bool> SendNotificationAsync(
+    public async Task<EmailSendResult> SendEmailAsync(
         string recipient,
-        string emailType,
-        Dictionary<string, string> placeholders,
+        string subject,
+        string body,
+        string? emailType = null,
         string? entityReference = null,
         string? correlationId = null,
         CancellationToken cancellationToken = default)
     {
-        var template = await emailTemplateRepository.GetByKeyAsync(emailType, cancellationToken);
-        if (template is null)
-        {
-            logger.LogWarning("Email template {EmailType} not found.", emailType);
-            return false;
-        }
-
-        var subject = templateRenderingService.Render(template.SubjectTemplate, placeholders);
-        var body = templateRenderingService.Render(template.BodyTemplate, placeholders);
+        var resolvedEmailType = emailType ?? EmailTypeConstants.Direct;
         var resolvedCorrelationId = correlationId ?? Guid.NewGuid().ToString("N");
 
         var message = new EmailMessage
@@ -52,7 +45,7 @@ public class EmailService(
             Recipient = recipient,
             Subject = subject,
             Body = body,
-            EmailType = emailType,
+            EmailType = resolvedEmailType,
             EntityReference = entityReference,
             CorrelationId = resolvedCorrelationId
         };
@@ -64,7 +57,7 @@ public class EmailService(
         await emailLogRepository.AddAsync(new EmailLog
         {
             Recipient = recipient,
-            EmailType = emailType,
+            EmailType = resolvedEmailType,
             Subject = subject,
             Status = result.Success ? EmailStatusConstants.Sent : EmailStatusConstants.Failed,
             SentTime = DateTime.UtcNow,
@@ -77,8 +70,47 @@ public class EmailService(
         await emailLogRepository.SaveChangesAsync(cancellationToken);
 
         if (!result.Success)
-            logger.LogWarning("Email send failed for {EmailType} to {Recipient}: {Error}", emailType, recipient, result.ErrorMessage);
+            logger.LogWarning("Email send failed for {EmailType} to {Recipient}: {Error}", resolvedEmailType, recipient, result.ErrorMessage);
 
-        return result.Success;
+        return new EmailSendResult
+        {
+            Success = result.Success,
+            ErrorMessage = result.ErrorMessage,
+            CorrelationId = resolvedCorrelationId,
+            ProcessingDuration = result.ProcessingDuration
+        };
+    }
+
+    public async Task<EmailSendResult> SendTemplatedEmailAsync(
+        string recipient,
+        string emailType,
+        Dictionary<string, string> placeholders,
+        string? entityReference = null,
+        string? correlationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var template = await emailTemplateRepository.GetByKeyAsync(emailType, cancellationToken);
+        if (template is null)
+        {
+            logger.LogWarning("Email template {EmailType} not found.", emailType);
+            return new EmailSendResult
+            {
+                Success = false,
+                ErrorMessage = $"Email template '{emailType}' not found.",
+                CorrelationId = correlationId ?? Guid.NewGuid().ToString("N")
+            };
+        }
+
+        var subject = templateRenderingService.Render(template.SubjectTemplate, placeholders);
+        var body = templateRenderingService.Render(template.BodyTemplate, placeholders);
+
+        return await SendEmailAsync(
+            recipient,
+            subject,
+            body,
+            emailType,
+            entityReference,
+            correlationId,
+            cancellationToken);
     }
 }

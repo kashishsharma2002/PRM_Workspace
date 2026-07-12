@@ -59,4 +59,16 @@ public class UserRepository(PrmDbContext context) : IUserRepository
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         context.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<User>> GetActiveUsersByRoleAsync(
+        string roleName,
+        CancellationToken cancellationToken = default) =>
+        await context.Users
+            .Where(u => u.IsActive)
+            .Join(context.UserRoles, u => u.Id, ur => ur.UserId, (u, ur) => new { u, ur })
+            .Join(context.Roles, combined => combined.ur.RoleId, r => r.Id, (combined, r) => new { combined.u, r.RoleName })
+            .Where(x => x.RoleName == roleName)
+            .Select(x => x.u)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 }

@@ -2,6 +2,8 @@ namespace Server.Common.Emails;
 
 public static class EmailTypeConstants
 {
+    public const string Direct = "DIRECT";
+
     public const string TimesheetReminder1 = "TIMESHEET_REMINDER_1";
     public const string TimesheetReminder2 = "TIMESHEET_REMINDER_2";
     public const string TimesheetFreeze = "TIMESHEET_FREEZE";
