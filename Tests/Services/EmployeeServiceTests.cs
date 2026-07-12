@@ -37,7 +37,7 @@ public class EmployeeServiceTests
     private readonly Mock<IEmployeeSkillRepository> _employeeSkillRepoMock;
     private readonly Mock<IAllocationRepository> _allocationRepoMock;
     private readonly Mock<IProjectRepository> _projectRepoMock;
-    private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
+    private readonly Mock<IEmployeeTeamService> _employeeTeamServiceMock;
     private readonly Mock<IAuditService> _auditServiceMock;
     private readonly Mock<ILogger<EmployeeService>> _loggerMock;
     private readonly EmployeeService _employeeService;
@@ -57,8 +57,8 @@ public class EmployeeServiceTests
         _employeeSkillRepoMock = new Mock<IEmployeeSkillRepository>();
         _allocationRepoMock = new Mock<IAllocationRepository>();
         _projectRepoMock = new Mock<IProjectRepository>();
-        _timesheetRepoMock = new Mock<ITimesheetRepository>();
         _auditServiceMock = new Mock<IAuditService>();
+        _employeeTeamServiceMock = new Mock<IEmployeeTeamService>();
         _loggerMock = new Mock<ILogger<EmployeeService>>();
 
         _employeeService = new EmployeeService(
@@ -70,7 +70,7 @@ public class EmployeeServiceTests
             _employeeSkillRepoMock.Object,
             _allocationRepoMock.Object,
             _projectRepoMock.Object,
-            _timesheetRepoMock.Object,
+            _employeeTeamServiceMock.Object,
             _auditServiceMock.Object,
             _loggerMock.Object);
     }
@@ -150,6 +150,8 @@ public class EmployeeServiceTests
 
         _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = 10, FullName = "Employee User" });
         _skillRepoMock.Setup(r => r.GetByNameAsync("Java", It.IsAny<CancellationToken>()))
             .ReturnsAsync(skill);
         _employeeSkillRepoMock.Setup(r => r.ExistsAsync(10, 5, It.IsAny<CancellationToken>()))
@@ -164,7 +166,7 @@ public class EmployeeServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ConflictAppException>(() =>
-            _employeeService.AddSkillAsync(1, request));
+            _employeeService.AddSkillAsync(999, 1, request));
     }
 
     [Fact]
@@ -181,7 +183,7 @@ public class EmployeeServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ValidationAppException>(() =>
-            _employeeService.AssignManagerAsync(1, new AssignManagerRequestDto
+            _employeeService.AssignManagerAsync(999, 1, new AssignManagerRequestDto
             {
                 ManagerUserId = 10
             }));
@@ -192,17 +194,20 @@ public class EmployeeServiceTests
     {
         // Arrange
         var profile = new ResourceProfile { Id = 1, UserId = 10, ManagerId = null };
-        var manager = new User { Id = 20, IsActive = true };
+        var employeeUser = new User { Id = 10, FullName = "Employee User" };
+        var manager = new User { Id = 20, IsActive = true, FullName = "Manager User" };
 
         _employeeRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
+        _userRepoMock.Setup(r => r.GetByIdAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employeeUser);
         _userRepoMock.Setup(r => r.GetByIdAsync(20, It.IsAny<CancellationToken>()))
             .ReturnsAsync(manager);
         _roleRepoMock.Setup(r => r.UserHasRoleAsync(20, RoleConstants.Manager, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Act
-        await _employeeService.AssignManagerAsync(1, new AssignManagerRequestDto
+        await _employeeService.AssignManagerAsync(999, 1, new AssignManagerRequestDto
         {
             ManagerUserId = 20
         });

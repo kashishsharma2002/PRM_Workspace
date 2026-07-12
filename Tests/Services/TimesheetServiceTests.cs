@@ -15,8 +15,8 @@ using Server.Repositories.Employees;
 using Server.Repositories.Allocations;
 using Server.Repositories.Projects;
 using Server.Repositories.Timesheets;
-using Server.Repositories.SystemConfig;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 using Server.Services.Timesheets;
 using System;
 using System.Collections.Generic;
@@ -37,8 +37,9 @@ public class TimesheetServiceTests
     private readonly Mock<IEmployeeRepository> _employeeRepoMock;
     private readonly Mock<IUserRepository> _userRepoMock;
     private readonly Mock<IActivityTagRepository> _activityTagRepoMock;
-    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IAuditService> _auditServiceMock;
+    private readonly Mock<ISchedulerTimesheetService> _schedulerTimesheetServiceMock;
     private readonly IMemoryCache _memoryCache;
     private readonly Mock<ILogger<TimesheetService>> _loggerMock;
     private readonly TimesheetService _timesheetService;
@@ -62,9 +63,10 @@ public class TimesheetServiceTests
         _employeeRepoMock = new Mock<IEmployeeRepository>();
         _userRepoMock = new Mock<IUserRepository>();
         _activityTagRepoMock = new Mock<IActivityTagRepository>();
-        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _auditServiceMock = new Mock<IAuditService>();
         _memoryCache = new MemoryCache(new MemoryCacheOptions());
+        _schedulerTimesheetServiceMock = new Mock<ISchedulerTimesheetService>();
         _loggerMock = new Mock<ILogger<TimesheetService>>();
 
         _timesheetService = new TimesheetService(
@@ -75,16 +77,22 @@ public class TimesheetServiceTests
             _employeeRepoMock.Object,
             _userRepoMock.Object,
             _activityTagRepoMock.Object,
-            _systemConfigRepoMock.Object,
+            _systemConfigServiceMock.Object,
             _auditServiceMock.Object,
+            _schedulerTimesheetServiceMock.Object,
             _memoryCache,
             _loggerMock.Object);
     }
 
     private void SetupDefaultConfigAndAllocation(decimal allocationPercentage = 50, string maxWeeklyHours = "40")
     {
-        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = maxWeeklyHours });
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = _userId, IsTimesheetFrozen = false });
+        _userRepoMock.Setup(r => r.GetByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = _userId, FullName = "Test Employee" });
+
+        _systemConfigServiceMock.Setup(r => r.GetMaxWeeklyHoursAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(decimal.Parse(maxWeeklyHours));
 
         var allocations = new List<ProjectAllocation>
         {
@@ -139,6 +147,22 @@ public class TimesheetServiceTests
     }
 
     [Fact]
+    public async Task SubmitTimesheetAsync_FrozenAccount_ThrowsForbidden()
+    {
+        _employeeRepoMock.Setup(r => r.GetByIdAsync(_employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResourceProfile { Id = _employeeId, UserId = _userId, IsTimesheetFrozen = true });
+
+        var request = new TimesheetSubmitRequestDto
+        {
+            WeekStartDate = _weekStart,
+            LineItems = [new() { ProjectId = _projectId, HoursLogged = 10 }]
+        };
+
+        await Assert.ThrowsAsync<ForbiddenAppException>(
+            () => _timesheetService.SubmitTimesheetAsync(_employeeId, _userId, request));
+    }
+
+    [Fact]
     public async Task SubmitTimesheetAsync_FutureWeek_ThrowsValidation()
     {
         // Arrange
@@ -162,8 +186,11 @@ public class TimesheetServiceTests
         };
         var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
-        _projectRepoMock.Setup(r => r.GetByIdAsync(_projectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Project { Id = _projectId, ProjectName = "Project A" });
+        _projectRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, Project>
+            {
+                [_projectId] = new Project { Id = _projectId, ProjectName = "Project A" }
+            });
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(
@@ -201,8 +228,11 @@ public class TimesheetServiceTests
         };
         var request = new TimesheetSubmitRequestDto { WeekStartDate = _weekStart, LineItems = lineItems };
 
-        _projectRepoMock.Setup(r => r.GetByIdAsync(9999, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Project { Id = 9999, ProjectName = "Project X" });
+        _projectRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, Project>
+            {
+                [9999] = new Project { Id = 9999, ProjectName = "Project X" }
+            });
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<ValidationAppException>(

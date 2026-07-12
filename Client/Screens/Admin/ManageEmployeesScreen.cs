@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -20,17 +21,20 @@ public static class ManageEmployeesScreen
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
+            if (choice is "6" or MenuChoices.Exit)
+                return;
+
             try
             {
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await ViewAllEmployeesScreen.RunAsync(clients);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await UpdateEmployeeScreen.RunAsync(clients);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await DeactivateEmployeeScreen.RunAsync(clients);
                         break;
                     case "4":
@@ -39,9 +43,6 @@ public static class ManageEmployeesScreen
                     case "5":
                         await AssignManagerScreen.RunAsync(clients);
                         break;
-                    case "6":
-                    case "0":
-                        return;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;

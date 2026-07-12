@@ -1,0 +1,97 @@
+using Server.Common;
+using Server.Common.Llm;
+using Server.Services.TeamBuilder.Abstractions;
+
+namespace Server.Services.TeamBuilder;
+
+public class TeamBuilderPromptBuilder : ITeamBuilderPromptBuilder
+{
+    public string BuildTeamBuilderPrompt(string requirement, string jsonContext) => $@"
+You are an AI Team Builder Assistant for the PRM Platform.
+The manager describes an entire project team in one natural-language requirement.
+You must parse every role from the requirement and fill each role in a single pass.
+
+Manager's Natural Language Team Requirement:
+""{requirement}""
+
+Database State Context (JSON Format):
+{jsonContext}
+
+The context contains:
+- managerRequirement: the raw requirement text
+- assignableCandidates: employees with remainingCapacityPercentage = {AllocationConstants.MaxUtilizationPercentage} (fully available)
+- allCandidates: full organization pool including partially or fully allocated employees
+
+Phase A — Parse requirement:
+1. Extract each distinct role from the requirement (e.g. ""Senior Java Developer"", ""DevOps Engineer"", ""QA Tester"").
+2. When a count is specified (e.g. ""2 Senior React Developers""), create that many separate role entries with numbered titles (e.g. ""Senior React Developer (1)"", ""Senior React Developer (2)""). Each counted slot is an independent role in the roles array.
+3. For each role, infer required skills and minimum proficiency ({string.Join(", ", EmployeeConstants.ProficiencyLevels)}).
+4. Map informal terms: beginner → BEGINNER, intermediate → INTERMEDIATE, advanced/senior → ADVANCED. Default to INTERMEDIATE when not stated.
+5. If a role has no inferable skills, use the role title as a skill hint.
+
+Phase B — Match (single pass):
+1. Fill every role from assignableCandidates only ({AllocationConstants.MaxUtilizationPercentage}% availability).
+2. Never assign the same employee to two roles. If an employee is already assigned to a FILLED role, do not reuse them — mark the extra slot as GAP instead.
+3. Match skills case-insensitively; proficiency order: BEGINNER < INTERMEDIATE < ADVANCED.
+4. Prefer higher proficiency and designation fit when multiple candidates qualify.
+5. For unfilled roles, set status to ""{TeamBuilderConstants.StatusGap}"" with exactly one gap reasonType:
+   - ""{TeamBuilderConstants.GapReasonNoSkill}"" — no employee has all required skills at minimum proficiency; state which skills are missing org-wide and suggest hire or train.
+   - ""{TeamBuilderConstants.GapReasonAllocatedElsewhere}"" — employee(s) have skills but are not fully available; name the closest match, availableFromDate (latest active allocation end date from context), and how many bench candidates were found.
+   - ""{TeamBuilderConstants.GapReasonAlreadyAssignedInTeam}"" — the only matching employee was already assigned to another role in this team plan; name that employee and the role they fill.
+6. For filled roles, set status to ""{TeamBuilderConstants.StatusFilled}"".
+7. Echo requiredSkills on each role result.
+8. GAP messages must be specific: how many bench candidates matched, who the best alternative is, and why the role cannot be filled.
+
+Return only the roles from the manager's requirement — do not copy every example role into your response.
+
+Output Format:
+You MUST respond strictly with a valid JSON block and no other conversational wrapper or markdown:
+{{
+  ""roles"": [
+    {{
+      ""roleTitle"": ""Senior React Developer (1)"",
+      ""requiredSkills"": [
+        {{ ""skillName"": ""React"", ""minProficiency"": ""ADVANCED"" }}
+      ],
+      ""status"": ""{TeamBuilderConstants.StatusFilled}"",
+      ""assignedEmployeeName"": ""Aarav Patel"",
+      ""matchScore"": 88,
+      ""reason"": ""Advanced React on bench."",
+      ""gap"": null
+    }},
+    {{
+      ""roleTitle"": ""Senior React Developer (2)"",
+      ""requiredSkills"": [
+        {{ ""skillName"": ""React"", ""minProficiency"": ""ADVANCED"" }}
+      ],
+      ""status"": ""{TeamBuilderConstants.StatusGap}"",
+      ""assignedEmployeeName"": null,
+      ""matchScore"": null,
+      ""reason"": null,
+      ""gap"": {{
+        ""reasonType"": ""{TeamBuilderConstants.GapReasonAlreadyAssignedInTeam}"",
+        ""message"": ""Aarav Patel is already assigned to Senior React Developer (1). No other fully available employee matches React at the required level. Consider hiring or training."",
+        ""alternativeEmployeeName"": ""Aarav Patel"",
+        ""availableFromDate"": null
+      }}
+    }}
+  ]
+}}
+";
+
+    public string BuildTeamBuilderRepairPrompt(string requirement, string previousResponse) => $@"
+Your previous response was invalid or incomplete JSON and could not be parsed.
+
+Manager's Team Requirement:
+""{requirement}""
+
+Previous response (may be truncated or malformed):
+{previousResponse}
+
+Return ONLY a valid JSON object with a ""roles"" array covering every role from the manager's requirement.
+Do not include markdown, code fences, or any text outside the JSON object.
+Each role must include: roleTitle, requiredSkills, status ({TeamBuilderConstants.StatusFilled} or {TeamBuilderConstants.StatusGap}),
+and for FILLED roles assignedEmployeeName, matchScore, reason; for GAP roles a gap object with reasonType and message.
+Never assign the same employee to more than one FILLED role.
+";
+}

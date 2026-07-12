@@ -14,4 +14,7 @@ public static class AllocationConstants
         [ProjectStatusConstants.Active, ProjectStatusConstants.Planned];
 
     public const int RecentActivityWeeks = 4;
+
+    public static string BuildDuplicateProjectAllocationMessage(decimal allocationPercentage) =>
+        $"Resource is already allocated to this project with {allocationPercentage:0.#}% allocation.";
 }

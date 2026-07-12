@@ -10,9 +10,9 @@ using Server.Repositories.Employees;
 using Server.Repositories.Allocations;
 using Server.Repositories.Projects;
 using Server.Repositories.Timesheets;
-using Server.Repositories.SystemConfig;
-using Server.Services.Shared;
 using Server.Services.Projects;
+using Server.Services.Shared;
+using Server.Services.SystemConfig;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -30,7 +30,7 @@ public class ManagerProjectServiceTests
     private readonly Mock<IAllocationRepository> _allocationRepoMock;
     private readonly Mock<IEmployeeRepository> _employeeRepoMock;
     private readonly Mock<ITimesheetRepository> _timesheetRepoMock;
-    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IAuditService> _auditServiceMock;
     private readonly Mock<ILogger<ProjectService>> _loggerMock;
     private readonly ProjectService _projectService;
@@ -48,7 +48,7 @@ public class ManagerProjectServiceTests
         _allocationRepoMock = new Mock<IAllocationRepository>();
         _employeeRepoMock = new Mock<IEmployeeRepository>();
         _timesheetRepoMock = new Mock<ITimesheetRepository>();
-        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _auditServiceMock = new Mock<IAuditService>();
         _loggerMock = new Mock<ILogger<ProjectService>>();
 
@@ -60,7 +60,8 @@ public class ManagerProjectServiceTests
             _allocationRepoMock.Object,
             _employeeRepoMock.Object,
             _timesheetRepoMock.Object,
-            _systemConfigRepoMock.Object,
+            _systemConfigServiceMock.Object,
+            ProjectHealthFlagEvaluatorTestHelper.CreateEvaluator(),
             _auditServiceMock.Object,
             _loggerMock.Object);
     }
@@ -115,8 +116,10 @@ public class ManagerProjectServiceTests
             .ReturnsAsync(milestones);
         _allocationRepoMock.Setup(r => r.GetActiveByProjectIdAsync(_managerAProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ProjectAllocation>());
-        _systemConfigRepoMock.Setup(r => r.GetByKeyAsync("MaxWeeklyHours", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SystemConfiguration { ConfigKey = "MaxWeeklyHours", ConfigValue = "40" });
+        _systemConfigServiceMock.Setup(r => r.GetMaxWeeklyHoursAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(40m);
+        _timesheetRepoMock.Setup(r => r.GetLoggedHoursByProjectForWeekAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<long, decimal>());
 
         // Act
         var detail = await _projectService.GetManagerProjectDetailAsync(_managerAUserId, _managerAProjectId);

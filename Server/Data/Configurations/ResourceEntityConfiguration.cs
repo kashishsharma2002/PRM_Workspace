@@ -15,6 +15,7 @@ public static class ResourceEntityConfiguration
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.ManagerId).HasColumnName("manager_id");
             entity.Property(e => e.ResourceStatus).HasColumnName("resource_status").HasMaxLength(20);
+            entity.Property(e => e.IsTimesheetFrozen).HasColumnName("is_timesheet_frozen");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 

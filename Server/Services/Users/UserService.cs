@@ -61,12 +61,11 @@ public class UserService(
             await userRepository.SaveChangesAsync(cancellationToken);
 
             await roleRepository.AssignRoleAsync(user.Id, roleEntity.Id, actorUserId, cancellationToken);
-            await roleRepository.SaveChangesAsync(cancellationToken);
 
-            long? resourceProfileId = null;
+            ResourceProfile? profile = null;
             if (role is RoleConstants.Employee)
             {
-                var profile = new ResourceProfile
+                profile = new ResourceProfile
                 {
                     UserId = user.Id,
                     ResourceStatus = ResourceStatusConstants.Bench,
@@ -75,15 +74,13 @@ public class UserService(
                 };
 
                 await employeeRepository.AddAsync(profile, cancellationToken);
-                await employeeRepository.SaveChangesAsync(cancellationToken);
-                resourceProfileId = profile.Id;
             }
 
             await auditService.LogCreateAsync(
                 actorUserId,
                 AuditEntityConstants.Users,
                 user.Id,
-                new { user.Username, user.Email, Role = role, ResourceProfileId = resourceProfileId },
+                new { user.Username, user.Email, Role = role, ResourceProfileId = (long?)null },
                 cancellationToken);
 
             await userRepository.SaveChangesAsync(cancellationToken);
@@ -96,8 +93,8 @@ public class UserService(
             return new CreateUserResponseDto
             {
                 UserId = user.Id,
-                EmployeeId = resourceProfileId ?? 0,
-                EmployeeCode = resourceProfileId.HasValue ? $"EMP-{user.Id:D6}" : string.Empty
+                EmployeeId = profile?.Id ?? 0,
+                EmployeeCode = profile is not null ? $"EMP-{user.Id:D6}" : string.Empty
             };
         }
         catch
@@ -110,21 +107,17 @@ public class UserService(
     public async Task<UserListResponseDto> GetAllUsersAsync(CancellationToken cancellationToken = default)
     {
         var users = await userRepository.GetAllAsync(cancellationToken);
-        var items = new List<UserListItemDto>();
-
-        foreach (var user in users)
+        var userIds = users.Select(u => u.Id).ToList();
+        var rolesByUserId = await roleRepository.GetRoleNamesForUsersAsync(userIds, cancellationToken);
+        var items = users.Select(user => new UserListItemDto
         {
-            var role = await roleRepository.GetRoleNameForUserAsync(user.Id, cancellationToken) ?? string.Empty;
-            items.Add(new UserListItemDto
-            {
-                Id = user.Id,
-                Username = user.Username,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = role,
-                IsActive = user.IsActive
-            });
-        }
+            Id = user.Id,
+            Username = user.Username,
+            FullName = user.FullName,
+            Email = user.Email,
+            Role = rolesByUserId.GetValueOrDefault(user.Id, string.Empty),
+            IsActive = user.IsActive
+        }).ToList();
 
         return new UserListResponseDto
         {
@@ -307,7 +300,6 @@ public class UserService(
         try
         {
             await roleRepository.ReplaceUserRoleAsync(userId, roleEntity.Id, actorUserId, cancellationToken);
-            await roleRepository.SaveChangesAsync(cancellationToken);
 
             if (newRole == RoleConstants.Employee)
             {
@@ -321,7 +313,6 @@ public class UserService(
                         CreatedAt = now,
                         UpdatedAt = now
                     }, cancellationToken);
-                    await employeeRepository.SaveChangesAsync(cancellationToken);
                 }
             }
 
@@ -331,7 +322,8 @@ public class UserService(
                 user.Id,
                 new { role = currentRole },
                 new { role = newRole },
-                cancellationToken);
+                cancellationToken,
+                AuditMessageBuilder.BuildRoleChangeSummary(user.FullName, currentRole, newRole));
 
             await userRepository.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

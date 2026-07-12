@@ -28,7 +28,9 @@ public class MilestoneRepository(PrmDbContext context) : IMilestoneRepository
     }
 
     public Task<ProjectMilestone?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.ProjectMilestones.FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
+        context.ProjectMilestones
+            .AsTracking()
+            .FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
 
     public async Task<short> GetNextSortOrderAsync(long projectId, CancellationToken cancellationToken = default)
     {

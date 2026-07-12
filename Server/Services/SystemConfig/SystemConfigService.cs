@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Server.AI.Configuration;
 using Server.Common;
 using Server.Common.Audit;
+using Server.Common.Emails;
 using Server.Common.Timesheets;
 using Server.Exceptions;
 using Server.Models.DTOs.SystemConfig;
@@ -34,7 +35,10 @@ public class SystemConfigService(
                 SchedulerDefaults.IntervalHours),
             MaxWeeklyHours = ParseIntOrDefault(
                 dict.GetValueOrDefault(ConfigKeys.MaxWeeklyHours),
-                (int)TimesheetDefaults.DefaultMaxWeeklyHours)
+                (int)TimesheetDefaults.DefaultMaxWeeklyHours),
+            TimesheetDeadlineWorkingDaysAfterWeekEnd = ParseIntOrDefault(
+                dict.GetValueOrDefault(ConfigKeys.TimesheetDeadlineDay),
+                EmailDefaults.TimesheetDeadlineWorkingDaysAfterWeekEnd)
         };
     }
 
@@ -47,7 +51,26 @@ public class SystemConfigService(
         var updatedKeys = new List<string>();
 
         if (!string.IsNullOrWhiteSpace(request.LlmProvider))
-            await UpdateKeyAsync(ConfigKeys.LlmProvider, request.LlmProvider.Trim(), actorUserId, now, updatedKeys, cancellationToken);
+        {
+            var currentProvider = await GetCurrentProviderAsync(cancellationToken);
+            var newProvider = request.LlmProvider.Trim();
+
+            if (!newProvider.Equals(currentProvider, StringComparison.OrdinalIgnoreCase) && request.LlmApiKey is null)
+            {
+                throw new ValidationAppException(
+                    "API key must be provided when changing the LLM provider.");
+            }
+
+            if (!newProvider.Equals(currentProvider, StringComparison.OrdinalIgnoreCase)
+                && !newProvider.Equals(LlmProviderKeys.Gemma, StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(request.LlmApiKey))
+            {
+                throw new ValidationAppException(
+                    "API key is required for the selected LLM provider.");
+            }
+
+            await UpdateKeyAsync(ConfigKeys.LlmProvider, newProvider, actorUserId, now, updatedKeys, cancellationToken);
+        }
 
         if (request.LlmApiKey is not null)
         {
@@ -62,6 +85,15 @@ public class SystemConfigService(
 
         if (request.MaxWeeklyHours.HasValue)
             await UpdateKeyAsync(ConfigKeys.MaxWeeklyHours, request.MaxWeeklyHours.Value.ToString(), actorUserId, now, updatedKeys, cancellationToken);
+
+        if (request.TimesheetDeadlineWorkingDaysAfterWeekEnd.HasValue)
+            await UpdateKeyAsync(
+                ConfigKeys.TimesheetDeadlineDay,
+                request.TimesheetDeadlineWorkingDaysAfterWeekEnd.Value.ToString(),
+                actorUserId,
+                now,
+                updatedKeys,
+                cancellationToken);
 
         if (updatedKeys.Count == 0)
             throw new ValidationAppException("At least one setting must be provided.");
@@ -102,4 +134,21 @@ public class SystemConfigService(
 
     private static int ParseIntOrDefault(string? value, int defaultValue) =>
         int.TryParse(value, out var parsed) ? parsed : defaultValue;
+
+    private async Task<string> GetCurrentProviderAsync(CancellationToken cancellationToken)
+    {
+        var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.LlmProvider, cancellationToken);
+        return string.IsNullOrWhiteSpace(config?.ConfigValue)
+            ? LlmProviderKeys.Gemini
+            : config.ConfigValue.Trim();
+    }
+
+    public async Task<decimal> GetMaxWeeklyHoursAsync(CancellationToken cancellationToken = default)
+    {
+        var config = await systemConfigRepository.GetByKeyAsync(ConfigKeys.MaxWeeklyHours, cancellationToken);
+        if (config is null || !decimal.TryParse(config.ConfigValue, out var maxHours))
+            return TimesheetDefaults.DefaultMaxWeeklyHours;
+
+        return maxHours;
+    }
 }

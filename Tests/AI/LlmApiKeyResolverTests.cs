@@ -36,7 +36,7 @@ public class LlmApiKeyResolverTests
         _encryptionMock.Setup(e => e.Decrypt("enc:AIzaSyTestKey")).Returns("AIzaSyTestKey");
 
         // Act
-        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma);
+        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey);
 
         // Assert
         Assert.Equal("AIzaSyTestKey", resolved);
@@ -52,7 +52,7 @@ public class LlmApiKeyResolverTests
         _encryptionMock.Setup(e => e.IsEncrypted("plain-api-key")).Returns(false);
 
         // Act
-        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma);
+        var resolved = await _resolver.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey);
 
         // Assert
         Assert.Equal("plain-api-key", resolved);
@@ -70,6 +70,6 @@ public class LlmApiKeyResolverTests
 
         // Act & Assert
         await Assert.ThrowsAsync<AiServiceAppException>(() =>
-            _resolver.ResolveAsync(_systemConfigRepoMock.Object, LlmProviderKeys.Gemma));
+            _resolver.ResolveAsync(_systemConfigRepoMock.Object, ConfigKeys.LlmApiKey));
     }
 }

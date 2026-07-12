@@ -11,4 +11,5 @@ public class AuditLog
     public string? NewValues { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CorrelationId { get; set; }
+    public string? Summary { get; set; }
 }

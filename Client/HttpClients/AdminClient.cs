@@ -13,6 +13,9 @@ public class AdminClient(RestClient restClient) : IAdminClient
     public Task ResetPasswordAsync(long userId, ResetPasswordRequest request) =>
         restClient.PutAsync<object>(ApiRoutes.UserResetPassword(userId), request, requireAuth: true);
 
+    public Task UpdateUserRoleAsync(long userId, UpdateUserRoleRequest request) =>
+        restClient.PutAsync<object>(ApiRoutes.UserRole(userId), request, requireAuth: true);
+
     public Task DeactivateUserAsync(long userId) =>
         restClient.PutAsync<object>(ApiRoutes.UserDeactivate(userId), new { }, requireAuth: true);
 
@@ -82,4 +85,18 @@ public class AdminClient(RestClient restClient) : IAdminClient
 
     public Task UpdateSystemConfigAsync(UpdateSystemConfigRequest request) =>
         restClient.PutAsync<object>(ApiRoutes.SystemConfig, request, requireAuth: true);
+
+    public Task<RoleListResponse?> GetRolesAsync() =>
+        restClient.GetAsync<RoleListResponse>(ApiRoutes.Roles, requireAuth: true);
+
+    public Task<RolePermissionsResponse?> GetRolePermissionsAsync(string roleName) =>
+        restClient.GetAsync<RolePermissionsResponse>(ApiRoutes.RolePermissions(roleName), requireAuth: true);
+
+    public Task<AuditLogListResponse?> GetAuditLogsAsync(string? query = null)
+    {
+        var endpoint = string.IsNullOrWhiteSpace(query)
+            ? ApiRoutes.AuditLogs
+            : ApiRoutes.AuditLogsWithQuery(query);
+        return restClient.GetAsync<AuditLogListResponse>(endpoint, requireAuth: true);
+    }
 }

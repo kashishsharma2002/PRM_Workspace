@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -5,30 +6,26 @@ namespace Client.Screens.Admin;
 
 public static class ManageEmployeeSkillsScreen
 {
-    private static readonly string[] Categories = ["BACKEND", "FRONTEND", "DEVOPS", "QA", "OTHER"];
-    private static readonly string[] Proficiencies = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
+    private static readonly string[] Categories = EmployeeConstants.SkillCategories;
+    private static readonly string[] Proficiencies = EmployeeConstants.ProficiencyLevels;
 
-    public static async Task RunAsync(AppClients clients)
-    {
-        ConsoleHelper.PrintHeader("Manage Employee/Resource Skills");
-
-        Console.Write("Enter Employee/Resource ID: ");
-        if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
-            ConsoleHelper.PrintError("Invalid employee/resource ID.");
-            return;
-        }
+            ConsoleHelper.PrintHeader("Manage Employee/Resource Skills");
 
-        try
-        {
+            Console.Write("Enter Employee/Resource ID: ");
+            if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
+            {
+                ConsoleHelper.PrintError("Invalid employee/resource ID.");
+                return;
+            }
+
             while (true)
             {
                 var detail = await clients.Admin.GetEmployeeAsync(employeeId);
-                if (detail is null)
-                {
-                    ConsoleHelper.PrintError("Employee/Resource not found.");
+                if (!ApiLoadHelper.RequireLoaded(detail, "Employee/Resource not found."))
                     return;
-                }
 
                 ConsoleHelper.PrintHeader($"Skills — {detail.FullName} (Employee/Resource)");
                 Console.WriteLine("Current Skills:");
@@ -54,51 +51,51 @@ public static class ManageEmployeeSkillsScreen
 
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await AddSkillAsync(clients, employeeId);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await UpdateProficiencyAsync(clients, employeeId, detail.Skills);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await RemoveSkillAsync(clients, employeeId, detail.Skills);
                         break;
                     case "4":
-                    case "0":
+                    case MenuChoices.Exit:
                         return;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
             }
-        }
-        catch (SessionExpiredException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 
     private static async Task AddSkillAsync(AppClients clients, long employeeId)
     {
-        Console.Write("Skill Name        : ");
-        var skillName = Console.ReadLine()?.Trim() ?? string.Empty;
+        var skillName = FormInputHelper.PromptRequired("Skill Name");
 
-        Console.WriteLine("Category          : (1) Backend  (2) Frontend  (3) DevOps  (4) QA  (5) Other");
-        Console.Write("Enter choice      : ");
-        var category = ParseChoice(Console.ReadLine(), Categories);
-
-        Console.WriteLine("Proficiency Level : (1) Beginner  (2) Intermediate  (3) Advanced");
-        Console.Write("Enter choice      : ");
-        var proficiency = ParseChoice(Console.ReadLine(), Proficiencies);
-
-        if (string.IsNullOrWhiteSpace(skillName) || category is null || proficiency is null)
+        string? category;
+        while (true)
         {
-            ConsoleHelper.PrintError("All fields are required.");
-            return;
+            Console.WriteLine("Category          : (1) Backend  (2) Frontend  (3) DevOps  (4) QA  (5) Other");
+            Console.Write("Enter choice      : ");
+            category = ParseChoice(Console.ReadLine(), Categories);
+            if (category is not null)
+                break;
+
+            ConsoleHelper.PrintError("Invalid category. Select 1-5.");
+        }
+
+        string? proficiency;
+        while (true)
+        {
+            Console.WriteLine("Proficiency Level : (1) Beginner  (2) Intermediate  (3) Advanced");
+            Console.Write("Enter choice      : ");
+            proficiency = ParseChoice(Console.ReadLine(), Proficiencies);
+            if (proficiency is not null)
+                break;
+
+            ConsoleHelper.PrintError("Invalid proficiency. Select 1-3.");
         }
 
         await clients.Admin.AddSkillAsync(employeeId, new AddSkillRequest
@@ -173,9 +170,9 @@ public static class ManageEmployeeSkillsScreen
 
     private static string FormatProficiency(string level) => level switch
     {
-        "BEGINNER" => "Beginner",
-        "INTERMEDIATE" => "Intermediate",
-        "ADVANCED" => "Advanced",
+        EmployeeConstants.ProficiencyBeginner => "Beginner",
+        EmployeeConstants.ProficiencyIntermediate => "Intermediate",
+        EmployeeConstants.ProficiencyAdvanced => "Advanced",
         _ => level
     };
 }

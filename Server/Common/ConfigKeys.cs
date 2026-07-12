@@ -12,4 +12,6 @@ public static class ConfigKeys
     public const string LlmModelGemma = "llm_model_gemma";
     public const string SchedulerIntervalHours = "scheduler_interval_hours";
     public const string MaxWeeklyHours = "max_weekly_hours";
+
+    public const string TimesheetDeadlineDay = "timesheet_compliance_deadline_day";
 }

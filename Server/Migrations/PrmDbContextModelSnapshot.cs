@@ -150,6 +150,10 @@ namespace Server.Migrations
                         .HasColumnType("text")
                         .HasColumnName("old_values");
 
+                    b.Property<string>("Summary")
+                        .HasColumnType("text")
+                        .HasColumnName("summary");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ActorUserId");
@@ -157,7 +161,7 @@ namespace Server.Migrations
                     b.ToTable("AUDIT_LOGS", (string)null);
                 });
 
-            modelBuilder.Entity("Server.Models.Entities.Permission", b =>
+            modelBuilder.Entity("Server.Models.Entities.EmailLog", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -166,29 +170,89 @@ namespace Server.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<string>("Action")
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("EmailType")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasColumnName("action");
+                        .HasColumnName("email_type");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("description");
+                    b.Property<string>("EntityReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("entity_reference");
 
-                    b.Property<string>("Resource")
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<long>("ProcessingDuration")
+                        .HasColumnType("bigint")
+                        .HasColumnName("processing_duration");
+
+                    b.Property<string>("Recipient")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("resource");
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("recipient");
+
+                    b.Property<DateTime>("SentTime")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("sent_time");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("subject");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Resource", "Action")
-                        .IsUnique();
+                    b.HasIndex("Recipient", "EmailType", "SentTime");
 
-                    b.ToTable("PERMISSIONS", (string)null);
+                    b.ToTable("EMAIL_LOGS", (string)null);
+                });
+
+            modelBuilder.Entity("Server.Models.Entities.EmailTemplate", b =>
+                {
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("template_key");
+
+                    b.Property<string>("BodyTemplate")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body_template");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("SubjectTemplate")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("subject_template");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TemplateKey");
+
+                    b.ToTable("EMAIL_TEMPLATES", (string)null);
                 });
 
             modelBuilder.Entity("Server.Models.Entities.Project", b =>
@@ -402,6 +466,10 @@ namespace Server.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("IsTimesheetFrozen")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_timesheet_frozen");
+
                     b.Property<long?>("ManagerId")
                         .HasColumnType("bigint")
                         .HasColumnName("manager_id");
@@ -456,23 +524,6 @@ namespace Server.Migrations
                         .IsUnique();
 
                     b.ToTable("ROLES", (string)null);
-                });
-
-            modelBuilder.Entity("Server.Models.Entities.RolePermission", b =>
-                {
-                    b.Property<long>("RoleId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("role_id");
-
-                    b.Property<long>("PermissionId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("permission_id");
-
-                    b.HasKey("RoleId", "PermissionId");
-
-                    b.HasIndex("PermissionId");
-
-                    b.ToTable("ROLE_PERMISSIONS", (string)null);
                 });
 
             modelBuilder.Entity("Server.Models.Entities.SchedulerJobLog", b =>
@@ -914,21 +965,6 @@ namespace Server.Migrations
                     b.HasOne("Server.Models.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Server.Models.Entities.RolePermission", b =>
-                {
-                    b.HasOne("Server.Models.Entities.Permission", null)
-                        .WithMany()
-                        .HasForeignKey("PermissionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Server.Models.Entities.Role", null)
-                        .WithMany()
-                        .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

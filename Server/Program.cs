@@ -12,11 +12,31 @@ builder.Services.AddPrmAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+app.Use(async (context, next) =>
 {
-    var db = scope.ServiceProvider.GetRequiredService<PrmDbContext>();
-    await db.Database.MigrateAsync();
-    await DatabaseSeeder.SeedAsync(db);
+    if (context.Request.Path.Equals("/health", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "healthy",
+            service = "PRM.Server",
+            phase = "7"
+        });
+        return;
+    }
+
+    await next(context);
+});
+
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<PrmDbContext>();
+        await db.Database.MigrateAsync();
+        await DatabaseSeeder.SeedAsync(db);
+    }
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -27,7 +47,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options => options.EnablePersistAuthorization());
 }
 
-if (!app.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseMiddleware<ForcePasswordChangeMiddleware>();
@@ -35,11 +55,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapGet("/health", () => Results.Ok(new
-{
-    status = "healthy",
-    service = "PRM.Server",
-    phase = "7"
-}));
-
 app.Run();
+
+public partial class Program { }

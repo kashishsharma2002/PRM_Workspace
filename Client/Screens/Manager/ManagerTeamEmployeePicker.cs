@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Employees;
@@ -15,7 +16,7 @@ internal static class ManagerTeamEmployeePicker
             Console.Write($"Enter Employee/Resource ID (enter {ShowTeamListOption} to view all employees/resources under you, B to go back): ");
             var input = Console.ReadLine()?.Trim();
 
-            if (string.Equals(input, "B", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(input, MenuChoices.Back, StringComparison.OrdinalIgnoreCase))
                 return null;
 
             if (!long.TryParse(input, out var enteredValue))
@@ -43,11 +44,8 @@ internal static class ManagerTeamEmployeePicker
     private static async Task DisplayTeamEmployeesAsync(AppClients clients)
     {
         var teamEmployees = await FetchTeamEmployeesAsync(clients);
-        if (teamEmployees is null)
-        {
-            ConsoleHelper.PrintError("Could not load your team employees.");
+        if (!ApiLoadHelper.RequireLoaded(teamEmployees, "Could not load your team employees."))
             return;
-        }
 
         if (teamEmployees.Count == 0)
         {

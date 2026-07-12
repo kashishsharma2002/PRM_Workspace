@@ -8,3 +8,5 @@ global using Client.Models.Projects;
 global using Client.Models.SystemConfig;
 global using Client.Models.Timesheets;
 global using Client.Models.Users;
+global using Client.Models.Roles;
+global using Client.Models.Audit;

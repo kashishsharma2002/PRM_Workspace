@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -5,16 +6,15 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllAllocationsScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        try
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
             ConsoleHelper.PrintHeader("All Allocations");
             Console.Write("[F] Filter  [Enter] Show active — choice: ");
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
             string? query = null;
-            if (action == "F")
+            if (action == MenuChoices.Filter)
             {
                 Console.Write("Employee ID (blank for all): ");
                 var empInput = Console.ReadLine()?.Trim();
@@ -31,11 +31,8 @@ public static class ViewAllAllocationsScreen
             }
 
             var list = await clients.Admin.GetAllocationsAsync(query);
-            if (list is null)
-            {
-                ConsoleHelper.PrintError("Failed to load allocations.");
+            if (!ApiLoadHelper.RequireLoaded(list, "Failed to load allocations."))
                 return;
-            }
 
             Console.WriteLine($"{"Employee",-18}{"Project",-18}{"%",-6}{"From",-12}{"To"}");
             ConsoleHelper.PrintDivider();
@@ -54,8 +51,5 @@ public static class ViewAllAllocationsScreen
             Console.WriteLine("Press any key to return...");
             Console.ReadKey(intercept: true);
             Console.WriteLine();
-        }
-        catch (SessionExpiredException) { throw; }
-        catch (Exception ex) { ErrorDisplayHelper.HandleException(ex); }
-    }
+        });
 }

@@ -58,6 +58,7 @@ public static class SystemEntityConfiguration
             entity.Property(e => e.NewValues).HasColumnName("new_values").HasColumnType("text");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.CorrelationId).HasColumnName("correlation_id").HasMaxLength(100);
+            entity.Property(e => e.Summary).HasColumnName("summary").HasColumnType("text");
 
             entity.HasOne<User>()
                 .WithMany()
@@ -75,6 +76,35 @@ public static class SystemEntityConfiguration
             entity.Property(e => e.StartedAt).HasColumnName("started_at");
             entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
             entity.Property(e => e.ErrorMessage).HasColumnName("error_message").HasColumnType("text");
+        });
+
+        builder.Entity<EmailTemplate>(entity =>
+        {
+            entity.ToTable("EMAIL_TEMPLATES");
+            entity.HasKey(e => e.TemplateKey);
+            entity.Property(e => e.TemplateKey).HasColumnName("template_key").HasMaxLength(50);
+            entity.Property(e => e.SubjectTemplate).HasColumnName("subject_template").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.BodyTemplate).HasColumnName("body_template").HasColumnType("text").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        builder.Entity<EmailLog>(entity =>
+        {
+            entity.ToTable("EMAIL_LOGS");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Recipient).HasColumnName("recipient").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.EmailType).HasColumnName("email_type").HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Subject).HasColumnName("subject").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.SentTime).HasColumnName("sent_time").IsRequired();
+            entity.Property(e => e.EntityReference).HasColumnName("entity_reference").HasMaxLength(100);
+            entity.Property(e => e.ErrorMessage).HasColumnName("error_message").HasColumnType("text");
+            entity.Property(e => e.ProcessingDuration).HasColumnName("processing_duration").IsRequired();
+            entity.Property(e => e.CorrelationId).HasColumnName("correlation_id").HasMaxLength(100).IsRequired();
+
+            entity.HasIndex(e => new { e.Recipient, e.EmailType, e.SentTime });
         });
     }
 }

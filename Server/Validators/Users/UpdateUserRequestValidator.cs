@@ -14,6 +14,6 @@ public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequestDto
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required.")
             .EmailAddress().WithMessage("Email must be a valid email address.")
-            .MaximumLength(200).WithMessage("Email must not exceed 200 characters.");
+            .MaximumLength(255).WithMessage("Email must not exceed 255 characters.");
     }
 }

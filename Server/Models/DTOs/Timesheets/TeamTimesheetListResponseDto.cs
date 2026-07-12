@@ -4,4 +4,5 @@ public class TeamTimesheetListResponseDto
 {
     public DateOnly WeekStartDate { get; set; }
     public List<TeamTimesheetRowDto> Rows { get; set; } = [];
+    public List<FrozenTeamMemberDto> FrozenEmployees { get; set; } = [];
 }

@@ -7,6 +7,7 @@ public class TeamMemberDetailDto
     public string? Department { get; set; }
     public string EmploymentStatus { get; set; } = string.Empty;
     public decimal TotalUtilizationPercentage { get; set; }
+    public bool IsTimesheetFrozen { get; set; }
     public IReadOnlyList<EmployeeSkillDto> Skills { get; set; } = [];
     public IReadOnlyList<ActiveAllocationDto> ActiveAllocations { get; set; } = [];
     public IReadOnlyList<string> RecentActivityTags { get; set; } = [];

@@ -6,6 +6,6 @@ public interface ILlmApiKeyResolver
 {
     Task<string> ResolveAsync(
         ISystemConfigRepository systemConfigRepository,
-        string providerKey,
+        string configKey,
         CancellationToken cancellationToken = default);
 }

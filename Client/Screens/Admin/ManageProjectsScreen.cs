@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -19,34 +20,31 @@ public static class ManageProjectsScreen
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            if (choice is "5" or MenuChoices.Exit)
+                return;
+
+            if (!await ScreenRunner.TryRunMenuActionAsync(async () =>
             {
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await CreateProjectScreen.RunAsync(clients);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await ViewAllProjectsScreen.RunAsync(clients);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await UpdateProjectScreen.RunAsync(clients);
                         break;
                     case "4":
                         await ManageMilestonesScreen.RunAsync(clients);
                         break;
-                    case "5":
-                    case "0":
-                        return;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
-            }
-            catch (SessionExpiredException)
-            {
-                throw;
-            }
+            }))
+                throw new SessionExpiredException("Session expired. Please log in again.");
         }
     }
 }

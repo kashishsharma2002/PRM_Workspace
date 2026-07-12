@@ -1,0 +1,6 @@
+namespace Client.Models.Users;
+
+public class UpdateUserRoleRequest
+{
+    public string Role { get; set; } = string.Empty;
+}

@@ -1,4 +1,6 @@
 using Client.Models.Ai;
+using Client.Models.ProjectRisk;
+using Client.Models.SkillMatching;
 
 namespace Client.HttpClients;
 

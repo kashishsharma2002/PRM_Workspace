@@ -7,16 +7,28 @@ namespace Server.Repositories.Allocations;
 
 public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 {
-    public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Where(a => a.ResourceProfileId == resourceProfileId && a.AllocationStatus == AllocationStatusConstants.Active)
             .ToListAsync(cancellationToken);
 
+    public Task<ProjectAllocation?> GetActiveByEmployeeAndProjectAsync(
+        long resourceProfileId,
+        long projectId,
+        CancellationToken cancellationToken = default) =>
+        context.ProjectAllocations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                a => a.ResourceProfileId == resourceProfileId
+                    && a.ProjectId == projectId
+                    && a.AllocationStatus == AllocationStatusConstants.Active,
+                cancellationToken);
+
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(
-        IEnumerable<long> employeeIds,
+        IEnumerable<long> resourceProfileIds,
         CancellationToken cancellationToken = default)
     {
-        var ids = employeeIds.ToList();
+        var ids = resourceProfileIds.ToList();
         if (ids.Count == 0)
             return [];
 
@@ -26,30 +38,30 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
     }
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdForWeekAsync(
-        long employeeId,
+        long resourceProfileId,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId
+            .Where(a => a.ResourceProfileId == resourceProfileId
                 && a.AllocationStatus == AllocationStatusConstants.Active
                 && a.AllocationStartDate <= weekEnd
                 && a.AllocationEndDate >= weekStart)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default) =>
         await context.ProjectAllocations
-            .Where(a => a.ResourceProfileId == employeeId)
+            .Where(a => a.ResourceProfileId == resourceProfileId)
             .OrderByDescending(a => a.AllocationStartDate)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsForWeekAsync(
-        IEnumerable<long> employeeIds,
+        IEnumerable<long> resourceProfileIds,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default)
     {
-        var ids = employeeIds.ToList();
+        var ids = resourceProfileIds.ToList();
         if (ids.Count == 0)
             return [];
 
@@ -80,18 +92,20 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
             .ToListAsync(cancellationToken);
 
     public Task<ProjectAllocation?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.ProjectAllocations.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        context.ProjectAllocations
+            .AsTracking()
+            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 
     public async Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(
-        long? employeeId,
+        long? resourceProfileId,
         long? projectId,
         string? status,
         CancellationToken cancellationToken = default)
     {
         var query = context.ProjectAllocations.AsQueryable();
 
-        if (employeeId.HasValue)
-            query = query.Where(a => a.ResourceProfileId == employeeId.Value);
+        if (resourceProfileId.HasValue)
+            query = query.Where(a => a.ResourceProfileId == resourceProfileId.Value);
 
         if (projectId.HasValue)
             query = query.Where(a => a.ProjectId == projectId.Value);
@@ -117,4 +131,37 @@ public class AllocationRepository(PrmDbContext context) : IAllocationRepository
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         context.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ActiveAllocationWithProjectName>> GetActiveWithProjectNamesByProfileIdsAsync(
+        IEnumerable<long> resourceProfileIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = resourceProfileIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return await context.ProjectAllocations
+            .Where(a => ids.Contains(a.ResourceProfileId) && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Join(context.Projects, a => a.ProjectId, p => p.Id, (a, p) => new ActiveAllocationWithProjectName(
+                a.ProjectId,
+                a.ResourceProfileId,
+                a.AllocationPercentage,
+                a.AllocationStartDate,
+                a.AllocationEndDate,
+                p.ProjectName))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ActiveAllocationWithEmployeeName>> GetActiveWithEmployeeNamesByProjectIdAsync(
+        long projectId,
+        CancellationToken cancellationToken = default) =>
+        await context.ProjectAllocations
+            .Where(a => a.ProjectId == projectId && a.AllocationStatus == AllocationStatusConstants.Active)
+            .Join(context.ResourceProfiles, a => a.ResourceProfileId, rp => rp.Id, (a, rp) => new { a, rp })
+            .Join(context.Users, combined => combined.rp.UserId, u => u.Id, (combined, u) => new ActiveAllocationWithEmployeeName(
+                u.FullName,
+                combined.a.AllocationPercentage,
+                combined.a.AllocationStartDate,
+                combined.a.AllocationEndDate))
+            .ToListAsync(cancellationToken);
 }

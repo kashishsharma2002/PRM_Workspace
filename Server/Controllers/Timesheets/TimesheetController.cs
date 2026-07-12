@@ -58,16 +58,12 @@ public class TimesheetController(ITimesheetService timesheetService) : Controlle
 
     [Authorize(Roles = RoleConstants.Employee)]
     [HttpGet("reminder")]
-    public async Task<ActionResult<ApiResponse<TimesheetReminderResponseDto>>> GetMissedReminder(CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<TimesheetReminderResponseDto>>> GetMissedReminder(
+        CancellationToken cancellationToken)
     {
         var employeeId = GetEmployeeId();
-        var showReminder = await timesheetService.HasMissedTimesheetReminderAsync(employeeId, cancellationToken);
-        var weekStart = WeekDateHelper.GetMostRecentCompletedWeekMonday();
-        return Ok(ApiResponse<TimesheetReminderResponseDto>.Ok(new TimesheetReminderResponseDto
-        {
-            ShowReminder = showReminder,
-            WeekStartDate = weekStart
-        }, "Reminder status retrieved."));
+        var result = await timesheetService.GetTimesheetReminderAsync(employeeId, cancellationToken);
+        return Ok(ApiResponse<TimesheetReminderResponseDto>.Ok(result, "Reminder status retrieved."));
     }
 
     [Authorize(Roles = RoleConstants.Manager)]

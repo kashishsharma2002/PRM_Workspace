@@ -6,6 +6,7 @@ using Server.Exceptions;
 using Server.Models.DTOs.Auth;
 using Server.Models.Entities;
 using Server.Services.Auth;
+using Server.Services.Shared;
 using Xunit;
 using System;
 using System.Threading;
@@ -18,6 +19,7 @@ public class AuthServiceTests
     private readonly Mock<IUserRepository> _userRepoMock;
     private readonly Mock<IRoleRepository> _roleRepoMock;
     private readonly Mock<IJwtTokenService> _jwtTokenServiceMock;
+    private readonly Mock<IAuditService> _auditServiceMock;
     private readonly Mock<ILogger<AuthService>> _loggerMock;
     private readonly AuthService _authService;
 
@@ -29,12 +31,15 @@ public class AuthServiceTests
         _userRepoMock = new Mock<IUserRepository>();
         _roleRepoMock = new Mock<IRoleRepository>();
         _jwtTokenServiceMock = new Mock<IJwtTokenService>();
+        _auditServiceMock = new Mock<IAuditService>();
+        _auditServiceMock = new Mock<IAuditService>();
         _loggerMock = new Mock<ILogger<AuthService>>();
 
         _authService = new AuthService(
             _userRepoMock.Object,
             _roleRepoMock.Object,
             _jwtTokenServiceMock.Object,
+            _auditServiceMock.Object,
             _loggerMock.Object);
 
         _user = new User

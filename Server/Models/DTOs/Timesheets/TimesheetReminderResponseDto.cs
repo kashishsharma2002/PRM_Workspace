@@ -4,4 +4,5 @@ public class TimesheetReminderResponseDto
 {
     public bool ShowReminder { get; set; }
     public DateOnly WeekStartDate { get; set; }
+    public bool IsTimesheetFrozen { get; set; }
 }

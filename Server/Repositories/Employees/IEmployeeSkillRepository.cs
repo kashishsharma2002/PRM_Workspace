@@ -11,4 +11,7 @@ public interface IEmployeeSkillRepository
     Task AddAsync(UserSkill userSkill, CancellationToken cancellationToken = default);
     Task UpdateAsync(UserSkill userSkill, CancellationToken cancellationToken = default);
     Task RemoveAsync(UserSkill userSkill, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EmployeeSkillDetailProjection>> GetSkillDetailsByUserIdsAsync(
+        IEnumerable<long> userIds,
+        CancellationToken cancellationToken = default);
 }

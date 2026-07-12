@@ -10,6 +10,7 @@ public interface IManagerClient
     Task<ManagerTimesheetDetail?> GetTimesheetDetailAsync(long timesheetId);
     Task<TeamDashboard?> GetTeamDashboardAsync();
     Task<TeamMemberDetail?> GetTeamMemberDetailAsync(long employeeId);
+    Task RestoreTimesheetAccessAsync(long employeeId);
     Task<CreateAllocationResponse?> CreateAllocationAsync(CreateAllocationRequest request);
     Task<EndAllocationResponse?> EndAllocationAsync(long allocationId);
 }

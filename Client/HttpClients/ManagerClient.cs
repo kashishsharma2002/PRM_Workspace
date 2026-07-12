@@ -28,6 +28,9 @@ public class ManagerClient(RestClient restClient) : IManagerClient
     public Task<TeamMemberDetail?> GetTeamMemberDetailAsync(long employeeId) =>
         restClient.GetAsync<TeamMemberDetail>(ApiRoutes.EmployeeTeamMember(employeeId), requireAuth: true);
 
+    public Task RestoreTimesheetAccessAsync(long employeeId) =>
+        restClient.PutAsync<object>(ApiRoutes.EmployeeRestoreTimesheetAccess(employeeId), new { }, requireAuth: true);
+
     public Task<CreateAllocationResponse?> CreateAllocationAsync(CreateAllocationRequest request) =>
         restClient.PostAsync<CreateAllocationResponse>(ApiRoutes.Allocations, request, requireAuth: true);
 

@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -5,16 +6,12 @@ namespace Client.Screens.Admin;
 
 public static class ViewAllUsersScreen
 {
-    public static async Task RunAsync(AppClients clients)
-    {
-        try
+    public static Task RunAsync(AppClients clients) =>
+        ScreenRunner.RunSafeAsync(async () =>
         {
             var list = await clients.Admin.GetUsersAsync();
-            if (list is null)
-            {
-                ConsoleHelper.PrintError("Failed to load users.");
+            if (!ApiLoadHelper.RequireLoaded(list, "Failed to load users."))
                 return;
-            }
 
             ConsoleHelper.PrintHeader("All Users");
             Console.WriteLine($"{"ID",-6}{"Username",-18}{"Role",-12}{"Status"}");
@@ -32,19 +29,9 @@ public static class ViewAllUsersScreen
             Console.Write("[R] Reactivate a user  [B] Back — choice: ");
             var action = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-            if (action == "R")
+            if (action == MenuChoices.Refresh)
                 await ReactivateUserAsync(clients, list);
-        }
-        catch (SessionExpiredException ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            ErrorDisplayHelper.HandleException(ex);
-        }
-    }
+        });
 
     private static async Task ReactivateUserAsync(AppClients clients, UserListResponse list)
     {
@@ -71,9 +58,7 @@ public static class ViewAllUsersScreen
         Console.WriteLine();
         Console.WriteLine($"User: {user.FullName} ({user.Role}) — currently Inactive");
         Console.WriteLine();
-        Console.Write("Reactivate this account? [Y] Yes  [B] Cancel — choice: ");
-        var confirm = Console.ReadLine()?.Trim().ToUpperInvariant();
-        if (confirm != "Y")
+        if (!FormInputHelper.ConfirmYes("Reactivate this account? [Y] Yes  [B] Cancel — choice: "))
             return;
 
         try

@@ -22,7 +22,8 @@ public partial class TimesheetService
             return new TeamTimesheetListResponseDto
             {
                 WeekStartDate = resolvedWeek,
-                Rows = []
+                Rows = [],
+                FrozenEmployees = []
             };
         }
 
@@ -32,6 +33,16 @@ public partial class TimesheetService
             e => e.Id,
             e => users.TryGetValue(e.UserId, out var user) ? user.FullName : "Unknown");
 
+        var frozenEmployees = team
+            .Where(e => e.IsTimesheetFrozen)
+            .Select(e => new FrozenTeamMemberDto
+            {
+                EmployeeId = e.Id,
+                EmployeeName = employeeNameLookup.GetValueOrDefault(e.Id, "Unknown")
+            })
+            .OrderBy(e => e.EmployeeName)
+            .ToList();
+
         var allocations = await allocationRepository.GetActiveByEmployeeIdsForWeekAsync(
             employeeIds, resolvedWeek, weekEnd, cancellationToken);
         var timesheets = await timesheetRepository.GetByEmployeeIdsAndWeekAsync(
@@ -39,28 +50,11 @@ public partial class TimesheetService
         var timesheetByEmployee = timesheets.ToDictionary(t => t.ResourceProfileId);
 
         var rows = new List<TeamTimesheetRowDto>();
-        foreach (var allocation in allocations)
+        var employeesWithSubmittedRows = new HashSet<long>();
+
+        foreach (var timesheet in timesheets)
         {
-            var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
-            var projectName = project?.ProjectName ?? "Unknown";
-            var employeeName = employeeNameLookup.GetValueOrDefault(allocation.ResourceProfileId, "Unknown");
-
-            if (!timesheetByEmployee.TryGetValue(allocation.ResourceProfileId, out var timesheet))
-            {
-                if (weekEnd < DateOnly.FromDateTime(DateTime.Today))
-                {
-                    rows.Add(new TeamTimesheetRowDto
-                    {
-                        TimesheetId = null,
-                        EmployeeName = employeeName,
-                        ProjectName = projectName,
-                        HoursLogged = 0,
-                        Status = TimesheetConstants.StatusMissed
-                    });
-                }
-
-                continue;
-            }
+            var employeeName = employeeNameLookup.GetValueOrDefault(timesheet.ResourceProfileId, "Unknown");
 
             if (timesheet.Status == TimesheetConstants.StatusMissed)
             {
@@ -68,10 +62,11 @@ public partial class TimesheetService
                 {
                     TimesheetId = timesheet.Id,
                     EmployeeName = employeeName,
-                    ProjectName = projectName,
+                    ProjectName = "-",
                     HoursLogged = 0,
                     Status = TimesheetConstants.StatusMissed
                 });
+                employeesWithSubmittedRows.Add(timesheet.ResourceProfileId);
                 continue;
             }
 
@@ -79,24 +74,64 @@ public partial class TimesheetService
                 continue;
 
             var lineItems = await timesheetRepository.GetLineItemsByTimesheetIdAsync(timesheet.Id, cancellationToken);
-            var projectLine = lineItems.FirstOrDefault(li => li.ProjectId == allocation.ProjectId);
-            if (projectLine is null)
-                continue;
-
-            rows.Add(new TeamTimesheetRowDto
+            if (lineItems.Count == 0)
             {
-                TimesheetId = timesheet.Id,
-                EmployeeName = employeeName,
-                ProjectName = projectName,
-                HoursLogged = projectLine.HoursLogged,
-                Status = TimesheetConstants.StatusSubmitted
-            });
+                rows.Add(new TeamTimesheetRowDto
+                {
+                    TimesheetId = timesheet.Id,
+                    EmployeeName = employeeName,
+                    ProjectName = "-",
+                    HoursLogged = timesheet.TotalHours,
+                    Status = TimesheetConstants.StatusSubmitted
+                });
+                employeesWithSubmittedRows.Add(timesheet.ResourceProfileId);
+                continue;
+            }
+
+            foreach (var line in lineItems)
+            {
+                var project = await projectRepository.GetByIdAsync(line.ProjectId, cancellationToken);
+                rows.Add(new TeamTimesheetRowDto
+                {
+                    TimesheetId = timesheet.Id,
+                    EmployeeName = employeeName,
+                    ProjectName = project?.ProjectName ?? "Unknown",
+                    HoursLogged = line.HoursLogged,
+                    Status = TimesheetConstants.StatusSubmitted
+                });
+            }
+
+            employeesWithSubmittedRows.Add(timesheet.ResourceProfileId);
+        }
+
+        if (weekEnd < DateOnly.FromDateTime(DateTime.Today))
+        {
+            foreach (var allocation in allocations)
+            {
+                if (employeesWithSubmittedRows.Contains(allocation.ResourceProfileId))
+                    continue;
+
+                if (timesheetByEmployee.ContainsKey(allocation.ResourceProfileId))
+                    continue;
+
+                var project = await projectRepository.GetByIdAsync(allocation.ProjectId, cancellationToken);
+                var employeeName = employeeNameLookup.GetValueOrDefault(allocation.ResourceProfileId, "Unknown");
+                rows.Add(new TeamTimesheetRowDto
+                {
+                    TimesheetId = null,
+                    EmployeeName = employeeName,
+                    ProjectName = project?.ProjectName ?? "Unknown",
+                    HoursLogged = 0,
+                    Status = TimesheetConstants.StatusMissed
+                });
+            }
         }
 
         return new TeamTimesheetListResponseDto
         {
             WeekStartDate = resolvedWeek,
-            Rows = rows
+            Rows = rows.OrderBy(r => r.EmployeeName).ThenBy(r => r.ProjectName).ToList(),
+            FrozenEmployees = frozenEmployees
         };
     }
 

@@ -110,6 +110,7 @@ public class ProjectController(IProjectService projectService) : ControllerBase
 
     [Authorize(Roles = RoleConstants.Admin)]
     [HttpPut("{id:long}/milestones/{milestoneId:long}")]
+    [HttpPut("{id:long}/milestones/{milestoneId:long}/status")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateMilestoneStatus(
         long id,
         long milestoneId,

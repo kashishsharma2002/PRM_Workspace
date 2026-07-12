@@ -7,7 +7,24 @@ namespace Server.Repositories.Projects;
 public class ProjectRepository(PrmDbContext context) : IProjectRepository
 {
     public Task<Project?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        context.Projects.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        context.Projects
+            .AsTracking()
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyDictionary<long, Project>> GetByIdsAsync(
+        IEnumerable<long> ids,
+        CancellationToken cancellationToken = default)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0)
+            return new Dictionary<long, Project>();
+
+        var projects = await context.Projects
+            .Where(p => idList.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+
+        return projects.ToDictionary(p => p.Id);
+    }
 
     public async Task<IReadOnlyList<Project>> GetAllAsync(CancellationToken cancellationToken = default) =>
         await context.Projects.OrderBy(p => p.Id).ToListAsync(cancellationToken);
@@ -31,7 +48,9 @@ public class ProjectRepository(PrmDbContext context) : IProjectRepository
         string healthStatus,
         CancellationToken cancellationToken = default)
     {
-        var project = await context.Projects.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+        var project = await context.Projects
+            .AsTracking()
+            .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
         if (project is null)
             return;
 

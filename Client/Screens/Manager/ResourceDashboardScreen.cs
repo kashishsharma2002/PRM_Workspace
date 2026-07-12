@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Employees;
@@ -10,13 +11,14 @@ public static class ResourceDashboardScreen
     {
         while (true)
         {
-            try
+            var exitScreen = false;
+            await ScreenRunner.RunSafeAsync(async () =>
             {
                 ConsoleHelper.PrintHeader("Employee/Resource Dashboard");
                 var dashboard = await clients.Manager.GetTeamDashboardAsync();
-                if (dashboard is null)
+                if (!ApiLoadHelper.RequireLoaded(dashboard, "Could not load team dashboard."))
                 {
-                    ConsoleHelper.PrintError("Could not load team dashboard.");
+                    exitScreen = true;
                     return;
                 }
 
@@ -48,32 +50,30 @@ public static class ResourceDashboardScreen
                 Console.Write("Enter option: ");
                 var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-                if (choice == "B")
+                if (choice == MenuChoices.Back)
+                {
+                    exitScreen = true;
                     return;
+                }
 
-                if (choice != "D")
+                if (choice != MenuChoices.Details)
                 {
                     ConsoleHelper.PrintError("Invalid option.");
-                    continue;
+                    return;
                 }
 
                 Console.Write("Enter Employee/Resource ID: ");
                 if (!long.TryParse(Console.ReadLine()?.Trim(), out var employeeId))
                 {
                     ConsoleHelper.PrintError("Invalid employee/resource ID.");
-                    continue;
+                    return;
                 }
 
                 await ShowMemberDetailAsync(clients, employeeId);
-            }
-            catch (SessionExpiredException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                ErrorDisplayHelper.HandleException(ex);
-            }
+            });
+
+            if (exitScreen)
+                return;
         }
     }
 
@@ -81,16 +81,15 @@ public static class ResourceDashboardScreen
     {
         var detail = await clients.Manager.GetTeamMemberDetailAsync(employeeId);
 
-        if (detail is null)
-        {
-            ConsoleHelper.PrintError("Employee/Resource not found.");
+        if (!ApiLoadHelper.RequireLoaded(detail, "Employee/Resource not found."))
             return;
-        }
 
         ConsoleHelper.PrintDivider();
         Console.WriteLine($"── {detail.FullName} ─────────────────────────────────");
         Console.WriteLine($"Department     : {detail.Department ?? "-"}");
         Console.WriteLine($"Current Status : {detail.EmploymentStatus} (Employee/Resource) ({detail.TotalUtilizationPercentage:0.#}%)");
+        if (detail.IsTimesheetFrozen)
+            Console.WriteLine("Timesheet Access: FROZEN");
         Console.WriteLine($"Profile Skills : {string.Join(", ", detail.Skills.Select(s => s.SkillName))}");
         Console.WriteLine();
         Console.WriteLine("Active Allocations:");
@@ -111,8 +110,33 @@ public static class ResourceDashboardScreen
         }
 
         ConsoleHelper.PrintDivider();
+        if (detail.IsTimesheetFrozen)
+        {
+            Console.Write("[R] Restore timesheet access     ");
+        }
+
         Console.WriteLine("Press any key to go back...");
-        Console.ReadKey(intercept: true);
-        Console.WriteLine();
+        if (detail.IsTimesheetFrozen)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.KeyChar is 'r' or 'R')
+            {
+                Console.WriteLine();
+                await ScreenRunner.RunSafeAsync(async () =>
+                {
+                    await clients.Manager.RestoreTimesheetAccessAsync(employeeId);
+                    ConsoleHelper.PrintSuccess("Timesheet access restored.");
+                });
+            }
+            else
+            {
+                Console.WriteLine();
+            }
+        }
+        else
+        {
+            Console.ReadKey(intercept: true);
+            Console.WriteLine();
+        }
     }
 }

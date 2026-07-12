@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 using Client.Models.Timesheets;
@@ -15,43 +16,51 @@ public static class EmployeeMenuScreen
                 $"Welcome, {SessionStore.FullName}  |  {DateTime.Now:dd-MM-yyyy HH:mm}"
             );
             var reminder = await ShowReminderIfNeededAsync(clients);
+            var isFrozen = reminder?.IsTimesheetFrozen == true;
             ConsoleHelper.PrintDivider();
-            Console.WriteLine("1. Submit Timesheet");
-            Console.WriteLine("2. View My Timesheets");
-            Console.WriteLine("3. View My Allocations");
+
+            if (!isFrozen)
+                Console.WriteLine("1. Submit Timesheet");
+
+            Console.WriteLine($"{(isFrozen ? "1" : "2")}. View My Timesheets");
+            Console.WriteLine($"{(isFrozen ? "2" : "3")}. View My Allocations");
             Console.WriteLine("0. Logout");
             ConsoleHelper.PrintDivider();
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            if (choice == MenuChoices.Exit)
             {
-                switch (choice)
-                {
-                    case "1":
-                        var defaultWeek = reminder?.ShowReminder == true ? reminder.WeekStartDate : (DateOnly?)null;
-                        await SubmitTimesheetScreen.RunAsync(clients, defaultWeek);
-                        break;
-                    case "2":
-                        await ViewTimesheetsScreen.RunAsync(clients);
-                        break;
-                    case "3":
-                        await ViewAllocationsScreen.RunAsync(clients);
-                        break;
-                    case "0":
-                        SessionStore.Clear();
-                        clients.SetToken(null);
-                        ConsoleHelper.PrintSuccess("Logged out.");
-                        return false;
-                    default:
-                        ConsoleHelper.PrintError("Invalid option.");
-                        break;
-                }
-            }
-            catch (SessionExpiredException)
-            {
+                SessionStore.Clear();
+                clients.SetToken(null);
+                ConsoleHelper.PrintSuccess("Logged out.");
                 return false;
             }
+
+            if (!await ScreenRunner.TryRunMenuActionAsync(async () =>
+            {
+                if (!isFrozen && choice == MenuChoices.One)
+                {
+                    var defaultWeek = reminder?.ShowReminder == true ? reminder.WeekStartDate : (DateOnly?)null;
+                    await SubmitTimesheetScreen.RunAsync(clients, defaultWeek);
+                    return;
+                }
+
+                if (choice == (isFrozen ? MenuChoices.One : MenuChoices.Two))
+                {
+                    await ViewTimesheetsScreen.RunAsync(clients);
+                    return;
+                }
+
+                if (choice == (isFrozen ? MenuChoices.Two : MenuChoices.Three))
+                {
+                    await ViewAllocationsScreen.RunAsync(clients);
+                    return;
+                }
+
+                ConsoleHelper.PrintError("Invalid option.");
+            }))
+                return false;
         }
     }
 
@@ -60,7 +69,11 @@ public static class EmployeeMenuScreen
         try
         {
             var reminder = await clients.Employee.GetReminderAsync();
-            if (reminder?.ShowReminder == true)
+            if (reminder?.IsTimesheetFrozen == true)
+            {
+                Console.WriteLine("  🔒 Timesheet access is frozen. Contact your manager to restore submission privileges.");
+            }
+            else if (reminder?.ShowReminder == true)
             {
                 Console.WriteLine(
                     $"  ⚠  Reminder: Timesheet for week {DateInputHelper.FormatDisplay(reminder.WeekStartDate)} has not been submitted.");

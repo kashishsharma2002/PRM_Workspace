@@ -14,8 +14,8 @@ using Server.Repositories.Employees;
 using Server.Repositories.Allocations;
 using Server.Repositories.Projects;
 using Server.Repositories.Timesheets;
-using Server.Repositories.SystemConfig;
 using Server.Services.Shared;
+using Server.Services.SystemConfig;
 using Server.Services.Timesheets;
 using System;
 using System.Collections.Generic;
@@ -35,7 +35,7 @@ public class ManagerTimesheetServiceTests
     private readonly Mock<IEmployeeRepository> _employeeRepoMock;
     private readonly Mock<IUserRepository> _userRepoMock;
     private readonly Mock<IActivityTagRepository> _activityTagRepoMock;
-    private readonly Mock<ISystemConfigRepository> _systemConfigRepoMock;
+    private readonly Mock<ISystemConfigService> _systemConfigServiceMock;
     private readonly Mock<IAuditService> _auditServiceMock;
     private readonly TimesheetService _timesheetService;
 
@@ -60,8 +60,9 @@ public class ManagerTimesheetServiceTests
         _employeeRepoMock = new Mock<IEmployeeRepository>();
         _userRepoMock = new Mock<IUserRepository>();
         _activityTagRepoMock = new Mock<IActivityTagRepository>();
-        _systemConfigRepoMock = new Mock<ISystemConfigRepository>();
+        _systemConfigServiceMock = new Mock<ISystemConfigService>();
         _auditServiceMock = new Mock<IAuditService>();
+        var schedulerTimesheetServiceMock = new Mock<ISchedulerTimesheetService>();
 
         _timesheetService = new TimesheetService(
             _transactionManagerMock.Object,
@@ -71,8 +72,9 @@ public class ManagerTimesheetServiceTests
             _employeeRepoMock.Object,
             _userRepoMock.Object,
             _activityTagRepoMock.Object,
-            _systemConfigRepoMock.Object,
+            _systemConfigServiceMock.Object,
             _auditServiceMock.Object,
+            schedulerTimesheetServiceMock.Object,
             new MemoryCache(new MemoryCacheOptions()),
             new Mock<ILogger<TimesheetService>>().Object);
     }
@@ -156,6 +158,36 @@ public class ManagerTimesheetServiceTests
         // Assert
         Assert.Single(managerAResult.Rows);
         Assert.Equal(_employeeAFullName, managerAResult.Rows[0].EmployeeName);
+    }
+
+    [Fact]
+    public async Task GetTeamTimesheetsAsync_ReturnsFrozenEmployees()
+    {
+        var team = new List<ResourceProfile>
+        {
+            new() { Id = _employeeAProfileId, UserId = 101, ManagerId = _managerAUserId, IsTimesheetFrozen = true },
+            new() { Id = 11, UserId = 102, ManagerId = _managerAUserId, IsTimesheetFrozen = false }
+        };
+        var users = new Dictionary<long, User>
+        {
+            { 101, new User { Id = 101, FullName = _employeeAFullName } },
+            { 102, new User { Id = 102, FullName = "Employee B" } }
+        };
+
+        _employeeRepoMock.Setup(r => r.GetByManagerIdAsync(_managerAUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(team);
+        _userRepoMock.Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<long>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(users);
+        _allocationRepoMock.Setup(r => r.GetActiveByEmployeeIdsForWeekAsync(It.IsAny<IEnumerable<long>>(), _weekStart, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _timesheetRepoMock.Setup(r => r.GetByEmployeeIdsAndWeekAsync(It.IsAny<IEnumerable<long>>(), _weekStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await _timesheetService.GetTeamTimesheetsAsync(_managerAUserId, _weekStart);
+
+        Assert.Single(result.FrozenEmployees);
+        Assert.Equal(_employeeAProfileId, result.FrozenEmployees[0].EmployeeId);
+        Assert.Equal(_employeeAFullName, result.FrozenEmployees[0].EmployeeName);
     }
 
     [Fact]

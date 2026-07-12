@@ -1,3 +1,5 @@
+using Server.Common.Allocations;
+
 namespace Server.Models.Entities;
 
 public class ProjectAllocation
@@ -8,7 +10,7 @@ public class ProjectAllocation
     public decimal AllocationPercentage { get; set; }
     public DateOnly AllocationStartDate { get; set; }
     public DateOnly AllocationEndDate { get; set; }
-    public string AllocationStatus { get; set; } = "ACTIVE";
+    public string AllocationStatus { get; set; } = AllocationStatusConstants.Active;
     public long AllocatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

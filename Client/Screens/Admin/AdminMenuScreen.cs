@@ -1,3 +1,4 @@
+using Client.Common;
 using Client.Helpers;
 using Client.HttpClients;
 
@@ -17,45 +18,49 @@ public static class AdminMenuScreen
             Console.WriteLine("2. Manage Projects");
             Console.WriteLine("3. View All Allocations");
             Console.WriteLine("4. Manage Users");
-            Console.WriteLine("5. System Configuration");
+            Console.WriteLine("5. View Activity Logs");
+            Console.WriteLine("6. System Configuration");
             Console.WriteLine("0. Logout");
             ConsoleHelper.PrintDivider();
             Console.Write("Enter option: ");
             var choice = Console.ReadLine()?.Trim();
 
-            try
+            if (choice == MenuChoices.Exit)
+            {
+                SessionStore.Clear();
+                clients.SetToken(null);
+                ConsoleHelper.PrintSuccess("Logged out.");
+                return false;
+            }
+
+            if (!await ScreenRunner.TryRunMenuActionAsync(async () =>
             {
                 switch (choice)
                 {
-                    case "1":
+                    case MenuChoices.One:
                         await ManageEmployeesScreen.RunAsync(clients);
                         break;
-                    case "2":
+                    case MenuChoices.Two:
                         await ManageProjectsScreen.RunAsync(clients);
                         break;
-                    case "3":
+                    case MenuChoices.Three:
                         await ViewAllAllocationsScreen.RunAsync(clients);
                         break;
                     case "4":
                         await ManageUsersScreen.RunAsync(clients);
                         break;
                     case "5":
+                        await ActivityLogScreen.RunAsync(clients);
+                        break;
+                    case "6":
                         await SystemConfigScreen.RunAsync(clients);
                         break;
-                    case "0":
-                        SessionStore.Clear();
-                        clients.SetToken(null);
-                        ConsoleHelper.PrintSuccess("Logged out.");
-                        return false;
                     default:
                         ConsoleHelper.PrintError("Invalid option.");
                         break;
                 }
-            }
-            catch (SessionExpiredException)
-            {
+            }))
                 return false;
-            }
         }
     }
 }

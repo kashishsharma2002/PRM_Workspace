@@ -1,4 +1,4 @@
-﻿namespace Client.Models.SystemConfig;
+namespace Client.Models.SystemConfig;
 
 public class UpdateSystemConfigRequest
 {
@@ -6,4 +6,5 @@ public class UpdateSystemConfigRequest
     public string? LlmApiKey { get; set; }
     public int? SchedulerIntervalHours { get; set; }
     public int? MaxWeeklyHours { get; set; }
+    public int? TimesheetDeadlineWorkingDaysAfterWeekEnd { get; set; }
 }

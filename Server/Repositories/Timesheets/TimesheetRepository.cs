@@ -20,9 +20,11 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
             cancellationToken);
 
     public Task<Timesheet?> GetByEmployeeAndWeekAsync(long employeeId, DateOnly weekStart, CancellationToken cancellationToken = default) =>
-        context.Timesheets.FirstOrDefaultAsync(
-            t => t.ResourceProfileId == employeeId && t.WeekStartDate == weekStart,
-            cancellationToken);
+        context.Timesheets
+            .AsTracking()
+            .FirstOrDefaultAsync(
+                t => t.ResourceProfileId == employeeId && t.WeekStartDate == weekStart,
+                cancellationToken);
 
     public async Task<IReadOnlyList<long>> GetEmployeeIdsWithTimesheetForWeekAsync(
         IEnumerable<long> employeeIds,
@@ -143,4 +145,27 @@ public class TimesheetRepository(PrmDbContext context) : ITimesheetRepository
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         context.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<RecentProjectTimesheetHours>> GetRecentLoggedHoursByProjectIdAsync(
+        long projectId,
+        DateOnly sinceDate,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await context.TimesheetLineItems
+            .Where(li => li.ProjectId == projectId && li.WorkDate >= sinceDate)
+            .Join(context.Timesheets, li => li.TimesheetId, t => t.Id, (li, t) => new { li, t })
+            .Join(context.ResourceProfiles, combined => combined.t.ResourceProfileId, rp => rp.Id, (combined, rp) => new { combined.li, rp })
+            .Join(context.Users, combined => combined.rp.UserId, u => u.Id, (combined, u) => new
+            {
+                u.FullName,
+                combined.li.HoursLogged,
+                combined.li.WorkDate
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(t => new RecentProjectTimesheetHours(
+            t.FullName,
+            t.HoursLogged,
+            t.WorkDate)).ToList();
+    }
 }

@@ -6,4 +6,5 @@ public class UpdateSystemConfigRequestDto
     public string? LlmApiKey { get; set; }
     public int? SchedulerIntervalHours { get; set; }
     public int? MaxWeeklyHours { get; set; }
+    public int? TimesheetDeadlineWorkingDaysAfterWeekEnd { get; set; }
 }

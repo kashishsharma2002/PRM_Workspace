@@ -4,15 +4,19 @@ namespace Server.Repositories.Allocations;
 
 public interface IAllocationRepository
 {
-    Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(IEnumerable<long> employeeIds, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default);
+    Task<ProjectAllocation?> GetActiveByEmployeeAndProjectAsync(
+        long resourceProfileId,
+        long projectId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsAsync(IEnumerable<long> resourceProfileIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdForWeekAsync(
-        long employeeId,
+        long resourceProfileId,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByEmployeeIdsForWeekAsync(
-        IEnumerable<long> employeeIds,
+        IEnumerable<long> resourceProfileIds,
         DateOnly weekStart,
         DateOnly weekEnd,
         CancellationToken cancellationToken = default);
@@ -21,10 +25,16 @@ public interface IAllocationRepository
         DateOnly weekEnd,
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProjectAllocation>> GetActiveByProjectIdAsync(long projectId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long employeeId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetByEmployeeIdAsync(long resourceProfileId, CancellationToken cancellationToken = default);
     Task<ProjectAllocation?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(long? employeeId, long? projectId, string? status, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectAllocation>> GetAllAsync(long? resourceProfileId, long? projectId, string? status, CancellationToken cancellationToken = default);
     Task UpdateAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default);
     Task AddAsync(ProjectAllocation allocation, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ActiveAllocationWithProjectName>> GetActiveWithProjectNamesByProfileIdsAsync(
+        IEnumerable<long> resourceProfileIds,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ActiveAllocationWithEmployeeName>> GetActiveWithEmployeeNamesByProjectIdAsync(
+        long projectId,
+        CancellationToken cancellationToken = default);
 }

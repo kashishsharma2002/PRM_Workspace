@@ -52,8 +52,6 @@ logs/
 *.log
 
 # --- Planning / spec / diagrams (reference only — keep locally) ---
-docs/specs/
-docs/diagrams/
 *.plan.md
 **/*plan*.md
 .cursor/
